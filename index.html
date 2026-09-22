@@ -79,27 +79,57 @@
             cursor: -webkit-grabbing !important;
         }
 
-        /* Enhanced Floating Drag Effect & Smooth Ghost Styles */
-        .sortable-ghost {
-            opacity: 0.3 !important;
-            background: #F4EFE6 !important;
-            border: 2px dashed #B8502B !important;
-            box-shadow: inset 0 2px 6px rgba(0,0,0,0.03) !important;
-            transform: scale(0.98);
+        /* Smooth timeline drag: Sortable controls the moving element's transform.
+           Never override it with !important or animate it during pointer tracking. */
+        .timeline-entry {
+            position: relative;
         }
-        
-        .sortable-drag {
-            cursor: grabbing !important;
-            box-shadow: 0 20px 35px -5px rgba(94, 80, 57, 0.25), 0 10px 15px -5px rgba(184, 80, 43, 0.15) !important;
-            transform: scale(1.03) rotate(0.8deg) !important;
-            opacity: 0.98 !important;
-            z-index: 9999 !important;
-            border-color: #B8502B !important;
-            transition: transform 0.15s cubic-bezier(0.2, 0, 0, 1), box-shadow 0.15s ease !important;
+
+        /* The final activity has no onward journey, but retains its row in the
+           DOM so a reorder never needs to destroy and rebuild every card. */
+        #timelineContainer > .timeline-entry:last-child > .transit-row {
+            display: none;
         }
 
         .timeline-item {
-            transition: transform 0.2s cubic-bezier(0.2, 0, 0, 1), box-shadow 0.2s ease, border-color 0.15s ease;
+            transition: box-shadow 150ms ease, border-color 150ms ease, background-color 150ms ease;
+        }
+
+        .timeline-entry.sortable-chosen > .timeline-item {
+            border-color: #B8502B;
+            box-shadow: 0 7px 19px rgba(94, 80, 57, 0.12);
+        }
+
+        .timeline-entry.sortable-ghost > .timeline-item {
+            opacity: 0.32;
+            border: 2px dashed #B8502B;
+            background: #F4EFE6;
+            box-shadow: none;
+        }
+
+        .timeline-entry.sortable-ghost > .transit-row {
+            opacity: 0.3;
+        }
+
+        /* The fallback clone must follow the pointer at 1:1 speed.
+           In particular, do not set transform or transition:transform here. */
+        .timeline-entry.sortable-drag {
+            z-index: 9999 !important;
+            opacity: 0.98;
+            pointer-events: none;
+            cursor: grabbing !important;
+            transition: none !important;
+        }
+
+        .timeline-entry.sortable-drag > .timeline-item {
+            border-color: #B8502B;
+            box-shadow: 0 18px 38px rgba(94, 80, 57, 0.22), 0 5px 12px rgba(184, 80, 43, 0.12);
+            transition: none;
+        }
+
+        #timelineContainer.is-sorting, #timelineContainer.is-sorting * {
+            user-select: none !important;
+            -webkit-user-select: none !important;
         }
 
         .no-scrollbar::-webkit-scrollbar {
@@ -455,7 +485,7 @@
             }
         }
 
-        function recalculateTimes() {
+        function recalculateTimes(renderCards = true) {
             const activeDay = itineraryData[activeDayIndex];
             if (!activeDay || !activeDay.items) return;
 
@@ -488,7 +518,11 @@
                 }
             });
 
-            renderTimeline();
+            if (renderCards) {
+                renderTimeline();
+            } else {
+                syncTimelineAfterSort();
+            }
             updateSummaryBar();
             autoSaveToLocalStorage();
         }
@@ -533,18 +567,19 @@
                 const isOvernight = item.duration === 'OVERNIGHT';
 
                 htmlContent += `
-                    <div data-index="${index}" class="timeline-item bg-white rounded-xl p-3 sm:p-3.5 border border-cream-200 hover:border-warm-accent/50 flex flex-col sm:flex-row items-start sm:items-center justify-between gap-2.5 shadow-sm transition group">
+                    <div data-index="${index}" class="timeline-entry group">
+                    <div class="timeline-item bg-white rounded-xl p-3 sm:p-3.5 border border-cream-200 hover:border-warm-accent/50 flex flex-col sm:flex-row items-start sm:items-center justify-between gap-2.5 shadow-sm">
                         
                         <div class="flex items-center gap-2 w-full sm:w-auto justify-between sm:justify-start">
                             <div class="flex items-center gap-2">
-                                <div class="grab-handle text-cream-400 group-hover:text-warm-accent transition p-1 rounded flex items-center justify-center shrink-0">
+                                <div class="grab-handle text-cream-400 group-hover:text-warm-accent transition p-1.5 rounded flex items-center justify-center shrink-0">
                                     <i class="fa-solid fa-grip-vertical text-sm"></i>
                                 </div>
 
                                 <div class="flex items-center gap-1 font-mono text-xs font-bold text-warm-accent bg-cream-50 px-2 py-1 rounded-lg border border-cream-200">
-                                    <span>${item.startTime}</span>
+                                    <span class="timeline-time-start">${item.startTime}</span>
                                     <span class="text-cream-400">-</span>
-                                    <span>${item.endTime}</span>
+                                    <span class="timeline-time-end">${item.endTime}</span>
                                 </div>
                             </div>
 
@@ -610,11 +645,13 @@
                     </div>
                 `;
 
-                if (index < activeDay.items.length - 1) {
+                // Keep a transit row in every wrapper; CSS hides the last one.
+                // This avoids recreating the DOM when the last activity is moved.
+                {
                     const transitVal = item.transitAfter !== undefined ? item.transitAfter : 30;
                     const transitNoteVal = item.transitNotes || '';
                     htmlContent += `
-                        <div class="flex flex-col sm:flex-row items-stretch sm:items-center justify-between gap-1.5 my-1 py-1 px-3 bg-cream-100/60 border border-dashed border-cream-300 rounded-xl text-xs text-warm-textMuted select-none">
+                        <div class="transit-row flex flex-col sm:flex-row items-stretch sm:items-center justify-between gap-1.5 mt-2 py-1 px-3 bg-cream-100/60 border border-dashed border-cream-300 rounded-xl text-xs text-warm-textMuted select-none">
                             <div class="flex items-center gap-2 shrink-0">
                                 <span class="text-warm-gold font-medium text-[11px] flex items-center gap-1">
                                     <i class="fa-solid fa-person-walking text-xs"></i> 移動:
@@ -638,6 +675,8 @@
                         </div>
                     `;
                 }
+                // Move the activity and its following transit information together.
+                htmlContent += `</div>`;
             });
 
             container.innerHTML = htmlContent;
@@ -655,32 +694,78 @@
                               .replace(/'/g, "&#039;");
         }
 
+        // Preserve the actual DOM on drop; replacing innerHTML here would cause
+        // a visible snap and discard Sortable's final movement animation.
+        function syncTimelineAfterSort() {
+            const container = document.getElementById('timelineContainer');
+            const items = itineraryData[activeDayIndex].items;
+            Array.from(container.children).forEach((entry, index) => {
+                if (!entry.classList.contains('timeline-entry')) return;
+                entry.dataset.index = String(index);
+                entry.querySelector('.timeline-time-start').textContent = items[index].startTime;
+                entry.querySelector('.timeline-time-end').textContent = items[index].endTime;
+
+                // Inline edit/remove actions must reference the NEW list indices.
+                entry.querySelectorAll('[onchange], [onclick]').forEach(control => {
+                    ['onchange', 'onclick'].forEach(attribute => {
+                        const handler = control.getAttribute(attribute);
+                        if (!handler) return;
+                        control.setAttribute(attribute, handler.replace(
+                            /(updateItemDuration|removeTimelineItem|updateItemName|updateItemCategory|updateItemNotes|updateTransitTime|updateTransitNotes)\(\d+/g,
+                            (_, action) => `${action}(${index}`
+                        ));
+                    });
+                });
+            });
+        }
+
         function initSortable() {
             const container = document.getElementById('timelineContainer');
             if (sortableInstance) {
                 sortableInstance.destroy();
+                sortableInstance = null;
             }
 
             sortableInstance = new Sortable(container, {
-                animation: 250,
-                easing: "cubic-bezier(0.2, 0, 0, 1)",
-                draggable: '.timeline-item',
+                animation: 180,
+                easing: 'cubic-bezier(0.22, 1, 0.36, 1)',
+                draggable: '.timeline-entry',
                 handle: '.grab-handle',
                 ghostClass: 'sortable-ghost',
+                chosenClass: 'sortable-chosen',
                 dragClass: 'sortable-drag',
                 forceFallback: true,
                 fallbackClass: 'sortable-drag',
+                fallbackOnBody: true,
+                fallbackTolerance: 2,
+                touchStartThreshold: 3,
+                swapThreshold: 0.55,
+                scroll: true,
+                scrollSensitivity: 60,
+                scrollSpeed: 12,
+                onStart: function () {
+                    container.classList.add('is-sorting');
+                },
+                onUnchoose: function () {
+                    container.classList.remove('is-sorting');
+                },
                 onEnd: function (evt) {
-                    const activeDay = itineraryData[activeDayIndex];
-                    const itemElements = Array.from(container.querySelectorAll('.timeline-item'));
-                    
-                    const newOrderedItems = itemElements.map(el => {
-                        const idx = parseInt(el.getAttribute('data-index'), 10);
-                        return activeDay.items[idx];
-                    }).filter(Boolean);
+                    container.classList.remove('is-sorting');
+                    if (evt.oldIndex === evt.newIndex) return;
 
-                    activeDay.items = newOrderedItems;
-                    recalculateTimes();
+                    const activeDay = itineraryData[activeDayIndex];
+                    // Only direct sortable children count: transit rows belong to their item.
+                    const entries = Array.from(container.children).filter(el => el.classList.contains('timeline-entry'));
+                    const orderedItems = entries.map(el => {
+                        const index = Number(el.dataset.index);
+                        return activeDay.items[index];
+                    });
+                    if (orderedItems.length !== activeDay.items.length || orderedItems.some(item => !item)) {
+                        renderTimeline();
+                        return;
+                    }
+                    activeDay.items = orderedItems;
+                    recalculateTimes(false);
                 }
             });
         }
