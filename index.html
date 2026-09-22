@@ -266,9 +266,13 @@
                             <option value="45">45分</option>
                             <option value="60" selected>60分</option>
                             <option value="90">90分</option>
-                            <option value="120">120分</option>
-                            <option value="180">180分</option>
-                            <option value="240">240分</option>
+                            <option value="120">2時間</option>
+                            <option value="180">3時間</option>
+                            <option value="240">4時間</option>
+                            <option value="300">5時間</option>
+                            <option value="360">6時間</option>
+                            <option value="420">7時間</option>
+                            <option value="480">8時間</option>
                             <option value="OVERNIGHT">🌙 翌朝まで</option>
                         </select>
                     </div>
@@ -353,7 +357,7 @@
             { id: 'hk_14', name: '黄大仙祠 (ウォンタイシン)', category: 'Culture', catName: '歴史・文化', duration: 60, desc: '「願い事が叶う」と大人気の道教寺院。おみくじや占いが有名。' },
             { id: 'hk_15', name: 'PMQ (元創方)', category: 'Art', catName: 'アート・建築', duration: 90, desc: '旧警察宿舎を改装したクリエイターや地元ブランドのショップ拠点。' },
             { id: 'hk_16', name: '蘭桂坊 (ランカイフォン)', category: 'Food', catName: 'グルメ・飲茶', duration: 120, desc: '欧米風のバーやレストランがひしめく香港随一のナイトライフ街。' },
-            { id: 'hk_17', name: 'ヒルサイド・エスカレーター', category: 'Landmark', catName: '定番名所', duration: 40, desc: '世界一の長さを誇る屋外屋根付きエスカレーター。周辺散策に最適。' },
+            { id: 'hk_17', name: 'ヒルサイド・エスカレーター', category: 'Landmark', catName: '定番名所', duration: 45, desc: '世界一の長さを誇る屋外屋根付きエスカレーター。周辺散策に最適。' },
             { id: 'hk_18', name: 'M+ ミュージアム', category: 'Art', catName: 'アート・建築', duration: 150, desc: '西九龍エリアに立つ、アジア最大級の現代視覚文化美術館。' },
             { id: 'hk_19', name: '香港故宮文化博物館', category: 'Art', catName: 'アート・建築', duration: 120, desc: '北京紫禁城の貴重な国宝や文化財が多数展示されている博物館。' },
             { id: 'hk_20', name: 'Sky100 (天際100)', category: 'Landmark', catName: '定番名所', duration: 60, desc: '最高峰ビルICCの100階にある360度パノラマ屋内展望台。' },
@@ -374,9 +378,9 @@
                 dayNumber: 1,
                 startTime: '09:00',
                 items: [
-                    { id: 'hk_17', name: 'ヒルサイド・エスカレーター', duration: 40, transitAfter: 30, transitNotes: '徒歩（SOHOエリア）', notes: '中環周辺を散策', category: 'Landmark', startTime: '09:00', endTime: '09:40' },
-                    { id: 'hk_08', name: '文武廟 (マンモーテンプル)', duration: 45, transitAfter: 20, transitNotes: 'ピークトラム山頂駅まで移動', notes: '参拝・写真撮影', category: 'Culture', startTime: '10:10', endTime: '10:55' },
-                    { id: 'hk_01', name: 'ビクトリア・ピーク (太平山)', duration: 120, transitAfter: 30, transitNotes: '', notes: 'ピークトラムに乗車', category: 'Landmark', startTime: '11:15', endTime: '13:15' },
+                    { id: 'hk_17', name: 'ヒルサイド・エスカレーター', duration: 45, transitAfter: 30, transitNotes: '徒歩（SOHOエリア）', notes: '中環周辺を散策', category: 'Landmark', startTime: '09:00', endTime: '09:45' },
+                    { id: 'hk_08', name: '文武廟 (マンモーテンプル)', duration: 45, transitAfter: 20, transitNotes: 'ピークトラム山頂駅まで移動', notes: '参拝・写真撮影', category: 'Culture', startTime: '10:15', endTime: '11:00' },
+                    { id: 'hk_01', name: 'ビクトリア・ピーク (太平山)', duration: 120, transitAfter: 30, transitNotes: '', notes: 'ピークトラムに乗車', category: 'Landmark', startTime: '11:20', endTime: '13:20' },
                     { id: 'hk_hotel_1', name: 'ホテル宿泊 (中環エリア)', duration: 'OVERNIGHT', transitAfter: 0, transitNotes: '', notes: 'ゆっくり就寝', category: 'Hotel', startTime: '22:00', endTime: '翌朝' }
                 ]
             },
@@ -424,6 +428,12 @@
                     const parsed = JSON.parse(savedStr);
                     if (parsed && Array.isArray(parsed.itineraryData) && parsed.itineraryData.length > 0) {
                         itineraryData = parsed.itineraryData;
+                        // Convert only the old 40-minute escalator default; preserve all other saved edits.
+                        itineraryData.forEach(day => (day.items || []).forEach(item => {
+                            if (/^hk_17(?:_|$)/.test(String(item.id)) && Number(item.duration) === 40) {
+                                item.duration = 45;
+                            }
+                        }));
                         activeDayIndex = Math.min(parsed.activeDayIndex || 0, itineraryData.length - 1);
                         return true;
                     }
@@ -547,6 +557,32 @@
             document.getElementById('dayStartTimeSelect').value = itineraryData[activeDayIndex].startTime || '09:00';
         }
 
+        // Short stays: 15-minute increments through 60 minutes, then 90 minutes;
+        // from 120 minutes onward, offer whole hours through 8 hours.
+        const STANDARD_DURATIONS = [15, 30, 45, 60, 90, 120, 180, 240, 300, 360, 420, 480];
+
+        function formatDurationLabel(duration) {
+            const minutes = Number(duration);
+            if (!Number.isFinite(minutes) || minutes < 120) return `${duration}分`;
+            const hours = Math.floor(minutes / 60);
+            const remainder = minutes % 60;
+            return `${hours}時間${remainder ? `${remainder}分` : ''}`;
+        }
+
+        // Preserve previously saved nonstandard durations without silently
+        // changing the selection or modifying a user's existing itinerary.
+        function renderDurationOptions(duration) {
+            const durations = [...STANDARD_DURATIONS];
+            const current = Number(duration);
+            if (duration !== 'OVERNIGHT' && Number.isFinite(current) && current > 0 && !durations.includes(current)) {
+                durations.push(current);
+                durations.sort((a, b) => a - b);
+            }
+            return durations.map(minutes =>
+                `<option value="${minutes}" ${duration !== 'OVERNIGHT' && current === minutes ? 'selected' : ''}>${formatDurationLabel(minutes)}</option>`
+            ).join('') + `<option value="OVERNIGHT" ${duration === 'OVERNIGHT' ? 'selected' : ''}>🌙 翌朝まで</option>`;
+        }
+
         function renderTimeline() {
             const activeDay = itineraryData[activeDayIndex];
             const container = document.getElementById('timelineContainer');
@@ -587,17 +623,7 @@
                                 <select onchange="updateItemDuration(${index}, this.value)"
                                     onclick="event.stopPropagation()"
                                     class="bg-white border border-cream-300 rounded text-center text-warm-textDark px-1.5 py-0.5 text-xs font-mono font-bold focus:outline-none focus:border-warm-accent cursor-pointer">
-                                    <option value="15" ${item.duration == 15 ? 'selected' : ''}>15分</option>
-                                    <option value="30" ${item.duration == 30 ? 'selected' : ''}>30分</option>
-                                    <option value="45" ${item.duration == 45 ? 'selected' : ''}>45分</option>
-                                    <option value="60" ${item.duration == 60 ? 'selected' : ''}>60分</option>
-                                    <option value="90" ${item.duration == 90 ? 'selected' : ''}>90分</option>
-                                    <option value="120" ${item.duration == 120 ? 'selected' : ''}>120分</option>
-                                    <option value="180" ${item.duration == 180 ? 'selected' : ''}>180分</option>
-                                    <option value="240" ${item.duration == 240 ? 'selected' : ''}>240分</option>
-                                    <option value="360" ${item.duration == 360 ? 'selected' : ''}>360分</option>
-                                    <option value="480" ${item.duration == 480 ? 'selected' : ''}>480分</option>
-                                    <option value="OVERNIGHT" ${isOvernight ? 'selected' : ''}>🌙 翌朝まで</option>
+                                    ${renderDurationOptions(item.duration)}
                                 </select>
 
                                 <button onclick="removeTimelineItem(${index})" title="削除"
@@ -840,7 +866,7 @@
                                     <i class="fa-solid ${style.icon} mr-1"></i>${spot.catName}
                                 </span>
                                 <span class="text-[10px] text-warm-textMuted">
-                                    <i class="fa-regular fa-clock mr-0.5"></i>約${spot.duration}分
+                                    <i class="fa-regular fa-clock mr-0.5"></i>約${formatDurationLabel(spot.duration)}
                                 </span>
                             </div>
                             <h3 class="text-xs font-bold text-warm-textDark">${spot.name}</h3>
@@ -1054,7 +1080,7 @@
                     txt += " (予定なし)\n\n";
                 } else {
                     day.items.forEach((item, idx) => {
-                        const durationText = item.duration === 'OVERNIGHT' ? '翌朝まで' : `${item.duration}分`;
+                        const durationText = item.duration === 'OVERNIGHT' ? '翌朝まで' : formatDurationLabel(item.duration);
                         txt += `${item.startTime} - ${item.endTime} (${durationText})\n`;
                         txt += ` 📍 ${item.name} [${item.category || '予定'}]\n`;
                         if (item.notes) {
@@ -1104,7 +1130,7 @@
                 } else {
                     day.items.forEach((item, idx) => {
                         const style = getCategoryStyle(item.category);
-                        const durationLabel = item.duration === 'OVERNIGHT' ? '翌朝まで' : `${item.duration}分滞在`;
+                        const durationLabel = item.duration === 'OVERNIGHT' ? '翌朝まで' : `${formatDurationLabel(item.duration)}滞在`;
                         pdfContent += `
                             <div style="background-color: #FFFFFF; border: 1px solid #EBE2D3; border-radius: 6px; padding: 8px 10px; margin-bottom: 4px;">
                                 <div style="display: flex; justify-content: space-between; align-items: center;">
