@@ -250,11 +250,27 @@
             overflow-wrap: anywhere;
         }
 
+        /* html2canvas cannot reliably capture descendants of display:none.
+           Keep the export source rendered off screen at its final width. */
+        .pdf-export-host {
+            position: fixed;
+            top: 0;
+            left: -10000px;
+            width: 700px;
+            pointer-events: none;
+            z-index: -1;
+            background: #FAF8F5;
+        }
+
         @media print {
             @page { size: A4 portrait; margin: 8mm; }
             body { display: block !important; background: #FAF8F5 !important; }
             body > header, body > main { display: none !important; }
-            #pdfExportTemplate { display: block !important; }
+            #pdfExportTemplate {
+                display: block !important;
+                position: static !important;
+                width: auto !important;
+            }
             .pdf-overview-day, .pdf-overview-event { break-inside: avoid; }
         }
     </style>
@@ -481,7 +497,7 @@
     </main>
 
     <!-- Hidden Off-screen Container for PDF Export -->
-    <div id="pdfExportTemplate" class="hidden"></div>
+    <div id="pdfExportTemplate" class="pdf-export-host" aria-hidden="true"></div>
 
     <script>
         const STORAGE_KEY = 'hk_travel_planner_state_v1';
