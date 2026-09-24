@@ -1195,7 +1195,13 @@
             }
             if (previous) previous.item.transitAfter = actual - previous.end;
             if (following && moved.item.duration !== 'OVERNIGHT') {
-                moved.item.transitAfter = Math.max(Number(moved.item.transitAfter ?? 30), following.start - actual - duration);
+                // A transfer belongs to the pair of adjacent activities, not
+                // to the moved activity. Preserve the following start if there
+                // is room; otherwise shift it by the standard 30 minutes.
+                const availableGap = following.start - actual - duration;
+                moved.item.transitAfter = availableGap >= 0 ? availableGap : 30;
+            } else if (!following) {
+                moved.item.transitAfter = DEFAULT_LAST_TRANSIT_MINUTES;
             }
             remaining.splice(insertAt, 0, moved);
             const proposed = {
