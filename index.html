@@ -140,12 +140,8 @@
             scrollbar-width: none;
         }
 
-        /* The final PDF section starts on a fresh page and shows each day as a
-           compact vertical timeline. Keep individual day columns together. */
-        .pdf-overview-page {
-            break-before: page;
-            page-break-before: always;
-        }
+        /* The PDF contains only the compact all-day timeline. Keep individual
+           day columns together when a longer trip needs another page. */
         .pdf-overview-grid {
             display: grid;
             grid-template-columns: repeat(2, minmax(0, 1fr));
@@ -200,6 +196,14 @@
             padding: 8px 9px;
             overflow-wrap: anywhere;
         }
+
+        @media print {
+            @page { size: A4 portrait; margin: 8mm; }
+            body { display: block !important; background: #FAF8F5 !important; }
+            body > header, body > main { display: none !important; }
+            #pdfExportTemplate { display: block !important; }
+            .pdf-overview-day, .pdf-overview-event { break-inside: avoid; }
+        }
     </style>
 </head>
 <body class="bg-cream-50 text-warm-textDark font-sans min-h-screen flex flex-col antialiased selection:bg-warm-accent selection:text-white">
@@ -231,7 +235,7 @@
                     <span class="hidden sm:inline">テキスト保存</span>
                     <span class="sm:hidden text-[11px]">TXT</span>
                 </button>
-                <button onclick="downloadPdfItinerary()" class="px-2.5 py-1.5 sm:px-3.5 sm:py-2 text-xs font-semibold bg-warm-accent hover:bg-warm-accentHover text-white border border-warm-accent rounded-xl transition flex items-center gap-1.5 shadow-sm active:scale-95">
+                <button onclick="downloadPdfItinerary()" title="全日程タイムラインのみPDF保存" class="px-2.5 py-1.5 sm:px-3.5 sm:py-2 text-xs font-semibold bg-warm-accent hover:bg-warm-accentHover text-white border border-warm-accent rounded-xl transition flex items-center gap-1.5 shadow-sm active:scale-95">
                     <i class="fa-solid fa-file-pdf"></i>
                     <span class="hidden sm:inline">PDF保存</span>
                     <span class="sm:hidden text-[11px]">PDF</span>
@@ -434,25 +438,95 @@
             { id: 'hk_30', name: '大浪湾 (Big Wave Bay)', category: 'Nature', catName: '絶景・自然', duration: 180, desc: '自然豊かなサーフィンスポットとしても有名な美しいビーチ。' }
         ];
 
+        function makeMeal(name, startTime, duration, transitAfter = 0) {
+            return {
+                id: `meal_${name}`, name, duration,
+                transitAfter, transitNotes: '', notes: '', category: 'Food',
+                startTime,
+                endTime: minutesToTime(timeToMinutes(startTime) + duration)
+            };
+        }
+
+        function makeMealDay(dayNumber) {
+            return {
+                dayNumber,
+                startTime: '09:00',
+                items: [
+                    makeMeal('朝食', '09:00', 45, 135),
+                    makeMeal('ランチ', '12:00', 60, 300),
+                    makeMeal('ディナー', '18:00', 60)
+                ]
+            };
+        }
+
         const DEFAULT_ITINERARY = [
             {
                 dayNumber: 1,
-                startTime: '09:00',
+                startTime: '08:15',
                 items: [
+                    makeMeal('朝食', '08:15', 45),
                     { id: 'hk_17', name: 'ヒルサイド・エスカレーター', duration: 45, transitAfter: 30, transitNotes: '徒歩（SOHOエリア）', notes: '中環周辺を散策', category: 'Landmark', startTime: '09:00', endTime: '09:45' },
-                    { id: 'hk_08', name: '文武廟 (マンモーテンプル)', duration: 45, transitAfter: 20, transitNotes: 'ピークトラム山頂駅まで移動', notes: '参拝・写真撮影', category: 'Culture', startTime: '10:15', endTime: '11:00' },
-                    { id: 'hk_01', name: 'ビクトリア・ピーク (太平山)', duration: 120, transitAfter: 30, transitNotes: '', notes: 'ピークトラムに乗車', category: 'Landmark', startTime: '11:20', endTime: '13:20' },
+                    { id: 'hk_08', name: '文武廟 (マンモーテンプル)', duration: 45, transitAfter: 60, transitNotes: 'ランチまでの移動・空き時間', notes: '参拝・写真撮影', category: 'Culture', startTime: '10:15', endTime: '11:00' },
+                    makeMeal('ランチ', '12:00', 60),
+                    { id: 'hk_01', name: 'ビクトリア・ピーク (太平山)', duration: 120, transitAfter: 180, transitNotes: 'ディナーまでの移動・空き時間', notes: 'ピークトラムに乗車', category: 'Landmark', startTime: '13:00', endTime: '15:00' },
+                    makeMeal('ディナー', '18:00', 60, 180),
                     { id: 'hk_hotel_1', name: 'ホテル宿泊 (中環エリア)', duration: 'OVERNIGHT', transitAfter: 0, transitNotes: '', notes: 'ゆっくり就寝', category: 'Hotel', startTime: '22:00', endTime: '翌朝' }
                 ]
             },
             {
                 dayNumber: 2,
-                startTime: '09:30',
+                startTime: '08:45',
                 items: [
-                    { id: 'hk_05', name: '香港ディズニーランド', duration: 480, transitAfter: 30, transitNotes: 'MTRディズニーランドリゾート線', notes: 'アナ雪エリアを中心に満喫', category: 'ThemePark', startTime: '09:30', endTime: '17:30' }
+                    makeMeal('朝食', '08:45', 45),
+                    { id: 'hk_05_am', name: '香港ディズニーランド（午前）', duration: 180, transitAfter: 0, transitNotes: '', notes: 'アナ雪エリアを中心に満喫', category: 'ThemePark', startTime: '09:30', endTime: '12:30' },
+                    makeMeal('ランチ', '12:30', 60),
+                    { id: 'hk_05_pm', name: '香港ディズニーランド（午後）', duration: 300, transitAfter: 30, transitNotes: '夕食場所へ', notes: 'パークを引き続き満喫', category: 'ThemePark', startTime: '13:30', endTime: '18:30' },
+                    makeMeal('ディナー', '19:00', 60)
                 ]
             }
         ];
+
+        // Earlier versions saved the untouched sample plan on first load. Only
+        // upgrade those exact samples; retain every itinerary the user edited.
+        const LEGACY_DEFAULT_SIGNATURES = [
+            { startTime: '09:00', items: [
+                ['hk_17', 'ヒルサイド・エスカレーター', 45, 30, '徒歩（SOHOエリア）', '中環周辺を散策', 'Landmark'],
+                ['hk_08', '文武廟 (マンモーテンプル)', 45, 20, 'ピークトラム山頂駅まで移動', '参拝・写真撮影', 'Culture'],
+                ['hk_01', 'ビクトリア・ピーク (太平山)', 120, 30, '', 'ピークトラムに乗車', 'Landmark'],
+                ['hk_hotel_1', 'ホテル宿泊 (中環エリア)', 'OVERNIGHT', 0, '', 'ゆっくり就寝', 'Hotel']
+            ]},
+            { startTime: '09:30', items: [
+                ['hk_05', '香港ディズニーランド', 480, 30, 'MTRディズニーランドリゾート線', 'アナ雪エリアを中心に満喫', 'ThemePark']
+            ]}
+        ];
+
+        function isUntouchedLegacyDay(day, index) {
+            const original = LEGACY_DEFAULT_SIGNATURES[index];
+            return original && day.startTime === original.startTime &&
+                Array.isArray(day.items) && day.items.length === original.items.length &&
+                day.items.every((item, itemIndex) => {
+                    const [id, name, duration, transitAfter, transitNotes, notes, category] = original.items[itemIndex];
+                    return item.id === id && item.name === name && item.duration === duration &&
+                        item.transitAfter === transitAfter && item.transitNotes === transitNotes &&
+                        item.notes === notes && item.category === category;
+                });
+        }
+
+        function convertSavedTimeAnchors(day) {
+            (day.items || []).forEach((item, index) => {
+                if (!item.preferredStartTime) return;
+                if (index === 0) {
+                    if (item.startTime && item.startTime !== '翌朝') day.startTime = item.startTime;
+                } else {
+                    const previous = day.items[index - 1];
+                    if (previous.endTime !== '翌朝' && item.startTime && item.startTime !== '翌朝') {
+                        const gap = timeToMinutes(item.startTime) - timeToMinutes(previous.endTime);
+                        if (gap >= 0) previous.transitAfter = gap;
+                    }
+                }
+                delete item.preferredStartTime;
+            });
+        }
 
         let selectedCategory = 'ALL';
         let activeDayIndex = 0;
@@ -495,6 +569,12 @@
                                 item.duration = 45;
                             }
                         }));
+                        itineraryData = itineraryData.map((day, index) =>
+                            isUntouchedLegacyDay(day, index)
+                                ? JSON.parse(JSON.stringify(DEFAULT_ITINERARY[index]))
+                                : day
+                        );
+                        itineraryData.forEach(convertSavedTimeAnchors);
                         activeDayIndex = Math.min(parsed.activeDayIndex || 0, itineraryData.length - 1);
                         return true;
                     }
@@ -507,11 +587,7 @@
 
         function resetCurrentDay() {
             if (!itineraryData[activeDayIndex]) return;
-            const initialDay = DEFAULT_ITINERARY[activeDayIndex] || {
-                dayNumber: activeDayIndex + 1,
-                startTime: '09:00',
-                items: []
-            };
+            const initialDay = DEFAULT_ITINERARY[activeDayIndex] || makeMealDay(activeDayIndex + 1);
             itineraryData[activeDayIndex] = JSON.parse(JSON.stringify(initialDay));
             renderDayTabs();
             recalculateTimes();
@@ -618,7 +694,15 @@
             }).join('');
 
             document.getElementById('currentDayTitle').innerText = `Day ${itineraryData[activeDayIndex].dayNumber} タイムライン`;
-            document.getElementById('dayStartTimeSelect').value = itineraryData[activeDayIndex].startTime || '09:00';
+            const startSelect = document.getElementById('dayStartTimeSelect');
+            const startTime = itineraryData[activeDayIndex].startTime || '09:00';
+            if (!Array.from(startSelect.options).some(option => option.value === startTime)) {
+                const option = document.createElement('option');
+                option.value = startTime;
+                option.textContent = startTime;
+                startSelect.appendChild(option);
+            }
+            startSelect.value = startTime;
         }
 
         // Short stays: 15-minute increments through 60 minutes, then 90 minutes;
@@ -670,16 +754,20 @@
                     <div data-index="${index}" class="timeline-entry group">
                     <div class="timeline-item bg-white rounded-xl p-3 sm:p-3.5 border border-cream-200 hover:border-warm-accent/50 flex flex-col sm:flex-row items-start sm:items-center justify-between gap-2.5 shadow-sm">
                         
-                        <div class="flex items-center gap-2 w-full sm:w-auto justify-between sm:justify-start">
+                        <div class="flex flex-wrap items-center gap-2 w-full sm:w-auto justify-between sm:justify-start">
                             <div class="flex items-center gap-2">
                                 <div class="grab-handle text-cream-400 group-hover:text-warm-accent transition p-1.5 rounded flex items-center justify-center shrink-0">
                                     <i class="fa-solid fa-grip-vertical text-sm"></i>
                                 </div>
 
                                 <div class="flex items-center gap-1 font-mono text-xs font-bold text-warm-accent bg-cream-50 px-2 py-1 rounded-lg border border-cream-200">
-                                    <span class="timeline-time-start">${item.startTime}</span>
+                                    ${item.startTime === '翌朝'
+                                        ? `<span class="timeline-time-start">翌朝</span>`
+                                        : `<input type="time" value="${escapeHtml(item.startTime)}" aria-label="開始時刻" title="開始時刻を変更" onchange="updateItemStartTime(${index}, this)" onclick="event.stopPropagation()" class="timeline-time-start w-[82px] sm:w-[95px] min-w-0 bg-transparent font-mono text-xs font-bold text-warm-accent focus:outline-none focus:ring-1 focus:ring-warm-accent rounded">`}
                                     <span class="text-cream-400">-</span>
-                                    <span class="timeline-time-end">${item.endTime}</span>
+                                    ${isOvernight || item.endTime === '翌朝'
+                                        ? `<span class="timeline-time-end">翌朝</span>`
+                                        : `<input type="time" value="${escapeHtml(item.endTime)}" aria-label="終了時刻" title="終了時刻を変更" onchange="updateItemEndTime(${index}, this)" onclick="event.stopPropagation()" class="timeline-time-end w-[82px] sm:w-[95px] min-w-0 bg-transparent font-mono text-xs font-bold text-warm-accent focus:outline-none focus:ring-1 focus:ring-warm-accent rounded">`}
                                 </div>
                             </div>
 
@@ -747,7 +835,7 @@
                                     <i class="fa-solid fa-person-walking text-xs"></i> 移動:
                                 </span>
                                 <div class="flex items-center gap-1 bg-white px-1.5 py-0.5 rounded border border-cream-300">
-                                    <input type="number" min="0" max="300" step="5" value="${transitVal}" 
+                                    <input type="number" min="0" max="1439" step="1" value="${transitVal}" 
                                         onchange="updateTransitTime(${index}, this.value)"
                                         onclick="event.stopPropagation()"
                                         class="w-9 bg-transparent text-center font-mono font-bold text-xs text-warm-textDark focus:outline-none">
@@ -789,11 +877,23 @@
         function syncTimelineAfterSort() {
             const container = document.getElementById('timelineContainer');
             const items = itineraryData[activeDayIndex].items;
+            let needsRebuild = false;
             Array.from(container.children).forEach((entry, index) => {
                 if (!entry.classList.contains('timeline-entry')) return;
                 entry.dataset.index = String(index);
-                entry.querySelector('.timeline-time-start').textContent = items[index].startTime;
-                entry.querySelector('.timeline-time-end').textContent = items[index].endTime;
+                for (const [selector, value] of [
+                    ['.timeline-time-start', items[index].startTime],
+                    ['.timeline-time-end', items[index].endTime]
+                ]) {
+                    const control = entry.querySelector(selector);
+                    if (!control || (control.tagName === 'INPUT') === (value === '翌朝')) {
+                        needsRebuild = true;
+                    } else if (control.tagName === 'INPUT') {
+                        control.value = value;
+                    } else {
+                        control.textContent = value;
+                    }
+                }
 
                 // Inline edit/remove actions must reference the NEW list indices.
                 entry.querySelectorAll('[onchange], [onclick]').forEach(control => {
@@ -801,12 +901,13 @@
                         const handler = control.getAttribute(attribute);
                         if (!handler) return;
                         control.setAttribute(attribute, handler.replace(
-                            /(updateItemDuration|removeTimelineItem|updateItemName|updateItemCategory|updateItemNotes|updateTransitTime|updateTransitNotes)\(\d+/g,
+                            /(updateItemDuration|updateItemStartTime|updateItemEndTime|removeTimelineItem|updateItemName|updateItemCategory|updateItemNotes|updateTransitTime|updateTransitNotes)\(\d+/g,
                             (_, action) => `${action}(${index}`
                         ));
                     });
                 });
             });
+            if (needsRebuild) renderTimeline();
         }
 
         function initSortable() {
@@ -967,16 +1068,34 @@
             const activeDay = itineraryData[activeDayIndex];
             if (!activeDay) return;
 
-            // Check if there is an item marked as "OVERNIGHT" (翌朝まで) in the current timeline
-            const overnightIndex = activeDay.items.findIndex(item => item.duration === 'OVERNIGHT');
-
-            if (overnightIndex !== -1) {
-                // Insert the new item right BEFORE the "OVERNIGHT" item
-                activeDay.items.splice(overnightIndex, 0, newItem);
-            } else {
-                // Otherwise append to the end as normal
-                activeDay.items.push(newItem);
+            // Fill the next available part of the day before a meal. New days
+            // already contain dinner, so simply appending would put every new
+            // sightseeing item after dinner.
+            if (newItem.duration !== 'OVERNIGHT') {
+                for (const mealName of ['ランチ', 'ディナー']) {
+                    const mealIndex = activeDay.items.findIndex(item => item.id === `meal_${mealName}`);
+                    if (mealIndex < 0) continue;
+                    const previous = activeDay.items[mealIndex - 1];
+                    if (previous && previous.duration === 'OVERNIGHT') continue;
+                    const previousEnd = previous ? timeToMinutes(previous.endTime) : timeToMinutes(activeDay.startTime);
+                    const space = timeToMinutes(activeDay.items[mealIndex].startTime) - previousEnd;
+                    const moveBefore = previous ? Math.min(Number(previous.transitAfter) || 0, 30) : 0;
+                    const moveAfter = space - moveBefore - Number(newItem.duration);
+                    if (moveAfter >= 0) {
+                        if (previous) previous.transitAfter = moveBefore;
+                        newItem.transitAfter = moveAfter;
+                        activeDay.items.splice(mealIndex, 0, newItem);
+                        recalculateTimes();
+                        return;
+                    }
+                }
             }
+
+            const dinnerIndex = activeDay.items.findIndex(item => item.id === 'meal_ディナー');
+            const overnightIndex = activeDay.items.findIndex(item => item.duration === 'OVERNIGHT');
+            const insertIndex = [dinnerIndex, overnightIndex].filter(index => index >= 0);
+            if (insertIndex.length) activeDay.items.splice(Math.min(...insertIndex), 0, newItem);
+            else activeDay.items.push(newItem);
 
             recalculateTimes();
         }
@@ -1047,6 +1166,54 @@
             recalculateTimes();
         }
 
+        function isValidClockTime(value) {
+            return /^(?:[01]\d|2[0-3]):[0-5]\d$/.test(value);
+        }
+
+        function rejectTimeEdit(input, previousValue, message) {
+            input.value = previousValue;
+            window.alert(message);
+        }
+
+        function updateItemStartTime(index, input) {
+            const day = itineraryData[activeDayIndex];
+            const item = day.items[index];
+            const newTime = input.value;
+            if (!isValidClockTime(newTime)) {
+                rejectTimeEdit(input, item.startTime, '開始時刻を時:分の形式で入力してください。');
+                return;
+            }
+
+            if (index === 0) {
+                day.startTime = newTime;
+                recalculateTimes();
+                renderDayTabs();
+                return;
+            }
+
+            const previous = day.items[index - 1];
+            if (previous.endTime === '翌朝' || timeToMinutes(newTime) < timeToMinutes(previous.endTime)) {
+                rejectTimeEdit(input, item.startTime,
+                    `前の予定の終了時刻（${previous.endTime}）より早い開始時刻にはできません。`);
+                return;
+            }
+
+            previous.transitAfter = timeToMinutes(newTime) - timeToMinutes(previous.endTime);
+            recalculateTimes();
+        }
+
+        function updateItemEndTime(index, input) {
+            const item = itineraryData[activeDayIndex].items[index];
+            const newTime = input.value;
+            if (!isValidClockTime(newTime) || timeToMinutes(newTime) <= timeToMinutes(item.startTime)) {
+                rejectTimeEdit(input, item.endTime, '終了時刻は開始時刻より後にしてください。');
+                return;
+            }
+
+            item.duration = timeToMinutes(newTime) - timeToMinutes(item.startTime);
+            recalculateTimes();
+        }
+
         function updateTransitTime(index, val) {
             const parsed = parseInt(val, 10);
             if (isNaN(parsed) || parsed < 0) return;
@@ -1084,15 +1251,10 @@
 
         function addNewDay() {
             const nextNum = itineraryData.length + 1;
-            itineraryData.push({
-                dayNumber: nextNum,
-                startTime: '09:00',
-                items: []
-            });
+            itineraryData.push(makeMealDay(nextNum));
             activeDayIndex = itineraryData.length - 1;
             renderDayTabs();
-            renderTimeline();
-            autoSaveToLocalStorage();
+            recalculateTimes();
         }
 
         function removeDay(index) {
@@ -1164,70 +1326,10 @@
             triggerFileDownload(blob, `HongKong_Trip_Plan.txt`);
         }
 
-        function downloadPdfItinerary() {
+        function renderPdfOverview() {
             const pdfContainer = document.getElementById('pdfExportTemplate');
-            
             let pdfContent = `
                 <div style="font-family: 'Noto Sans JP', sans-serif; background-color: #FAF8F5; color: #2B2621; padding: 20px; max-width: 700px; margin: 0 auto; box-sizing: border-box;">
-                    <div style="border-bottom: 2px solid #B8502B; padding-bottom: 10px; margin-bottom: 16px; display: flex; justify-content: space-between; align-items: flex-end;">
-                        <div>
-                            <h1 style="font-size: 20px; font-weight: 700; color: #B8502B; margin: 0;">HONG KONG ITINERARY</h1>
-                            <p style="font-size: 10px; color: #7C7369; margin: 2px 0 0 0;">香港旅行スケジュール表</p>
-                        </div>
-                        <div style="font-size: 10px; color: #A39071;">
-                            全 ${itineraryData.length} 日間
-                        </div>
-                    </div>
-            `;
-
-            itineraryData.forEach(day => {
-                pdfContent += `
-                    <div style="margin-bottom: 16px; background-color: #F4EFE6; border: 1px solid #EBE2D3; border-radius: 10px; padding: 12px; page-break-inside: avoid;">
-                        <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 8px; border-bottom: 1px solid #DCD0BB; padding-bottom: 6px;">
-                            <h2 style="font-size: 13px; font-weight: 700; color: #2B2621; margin: 0;">Day ${day.dayNumber}</h2>
-                            <span style="font-size: 10px; font-weight: 600; color: #B8502B;">開始時間: ${day.startTime}</span>
-                        </div>
-                `;
-
-                if (!day.items || day.items.length === 0) {
-                    pdfContent += `<p style="font-size: 10px; color: #7C7369; margin: 0;">(予定なし)</p>`;
-                } else {
-                    day.items.forEach((item, idx) => {
-                        const style = getCategoryStyle(item.category);
-                        const durationLabel = item.duration === 'OVERNIGHT' ? '翌朝まで' : `${formatDurationLabel(item.duration)}滞在`;
-                        pdfContent += `
-                            <div style="background-color: #FFFFFF; border: 1px solid #EBE2D3; border-radius: 6px; padding: 8px 10px; margin-bottom: 4px;">
-                                <div style="display: flex; justify-content: space-between; align-items: center;">
-                                    <span style="font-family: monospace; font-size: 10px; font-weight: 700; color: #B8502B;">${item.startTime} - ${item.endTime} (${durationLabel})</span>
-                                    <span style="font-size: 8px; padding: 1px 5px; border-radius: 4px; border: 1px solid #DCD0BB; color: #5E5039; background-color: #FAF8F5;">${style.label}</span>
-                                </div>
-                                <div style="font-size: 12px; font-weight: 700; color: #2B2621; margin-top: 3px;">${escapeHtml(item.name)}</div>
-                                ${item.notes ? `<div style="font-size: 9px; color: #7C7369; margin-top: 2px;">📝 ${escapeHtml(item.notes)}</div>` : ''}
-                            </div>
-                        `;
-
-                        if (idx < day.items.length - 1) {
-                            const transitMins = item.transitAfter !== undefined ? item.transitAfter : 30;
-                            const transitNote = item.transitNotes ? ` (${escapeHtml(item.transitNotes)})` : '';
-                            pdfContent += `
-                                <div style="text-align: center; font-size: 9px; color: #C5954B; margin: 2px 0; font-weight: 600;">
-                                    🚶 移動: ${transitMins}分 ${transitNote}
-                                </div>
-                            `;
-                        }
-                    });
-                }
-
-                pdfContent += `</div>`;
-            });
-
-            pdfContent += `
-                    <div style="text-align: center; font-size: 8px; color: #A39071; margin-top: 12px;">
-                        Generated by Hong Kong Travel Planner
-                    </div>
-            `;
-
-            pdfContent += `
                 <section class="pdf-overview-page" style="padding-top: 6px;">
                     <div style="border-bottom: 2px solid #B8502B; padding-bottom: 10px; margin-bottom: 16px;">
                         <div style="font-size: 9px; font-weight: 700; letter-spacing: 2px; color: #B8502B;">TRIP AT A GLANCE</div>
@@ -1280,29 +1382,36 @@
             `;
 
             pdfContainer.innerHTML = pdfContent;
+            return pdfContainer.firstElementChild;
+        }
+
+        function downloadPdfItinerary() {
+            const overview = renderPdfOverview();
 
             if (typeof html2pdf === 'undefined') {
-                downloadTextItinerary();
+                window.print();
                 return;
             }
 
             const opt = {
                 margin: [8, 8, 8, 8],
-                filename: 'HongKong_Trip_Plan.pdf',
-                pagebreak: { mode: ['css', 'legacy'], before: '.pdf-overview-page', avoid: '.pdf-overview-day' },
+                filename: 'HongKong_Trip_Timeline.pdf',
+                pagebreak: { mode: ['css', 'legacy'], avoid: '.pdf-overview-day' },
                 image: { type: 'jpeg', quality: 0.98 },
                 html2canvas: { scale: 2, useCORS: true, logging: false },
                 jsPDF: { unit: 'mm', format: 'a4', orientation: 'portrait' }
             };
 
-            html2pdf().set(opt).from(pdfContainer.children[0]).toPdf().get('pdf').then(function (pdf) {
+            html2pdf().set(opt).from(overview).toPdf().get('pdf').then(function (pdf) {
                 const blob = pdf.output('blob');
-                triggerFileDownload(blob, 'HongKong_Trip_Plan.pdf');
+                triggerFileDownload(blob, 'HongKong_Trip_Timeline.pdf');
             }).catch(function (err) {
                 console.warn("PDF generation fallback to standard save:", err);
-                html2pdf().set(opt).from(pdfContainer.children[0]).save();
+                html2pdf().set(opt).from(overview).save();
             });
         }
+
+        window.addEventListener('beforeprint', renderPdfOverview);
 
         window.onload = function() {
             populate15MinTimeOptions();
