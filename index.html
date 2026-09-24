@@ -822,6 +822,14 @@
                 }
             });
 
+            // Keep the user's travel time for each neighboring pair. Moving an
+            // activity away temporarily separates that pair; restoring it
+            // should not inherit the gap created by the temporary position.
+            const rememberedGaps = activeDay.transitGaps || (activeDay.transitGaps = {});
+            activeDay.items.slice(0, -1).forEach((item, idx) => {
+                rememberedGaps[JSON.stringify([item.id, activeDay.items[idx + 1].id])] = item.transitAfter;
+            });
+
             renderTimeline();
             updateSummaryBar();
             autoSaveToLocalStorage();
@@ -1178,28 +1186,41 @@
             const remaining = positions.filter((_, i) => i !== index);
             const beforeRemoval = positions[index - 1];
             const afterRemoval = positions[index + 1];
-            if (beforeRemoval && afterRemoval && beforeRemoval.item.duration !== 'OVERNIGHT') {
-                beforeRemoval.item.transitAfter = Math.max(0, afterRemoval.start - beforeRemoval.end);
-            }
             let insertAt = moved.item.duration === 'OVERNIGHT' ? remaining.length :
                 remaining.findIndex(entry => entry.start >= target || entry.item.duration === 'OVERNIGHT');
             if (insertAt < 0) insertAt = remaining.length;
+            const reordered = insertAt !== index;
+            const rememberedGap = (from, to) => {
+                const key = JSON.stringify([from.item.id, to.item.id]);
+                return Object.prototype.hasOwnProperty.call(day.transitGaps || {}, key)
+                    ? Number(day.transitGaps[key]) : 30;
+            };
+            if (reordered && beforeRemoval && afterRemoval && beforeRemoval.item.duration !== 'OVERNIGHT') {
+                beforeRemoval.item.transitAfter = rememberedGap(beforeRemoval, afterRemoval);
+            }
             const previous = remaining[insertAt - 1];
             const following = remaining[insertAt];
-            const available = previous ? previous.end : getScheduleStartMinutes();
+            // Removing an activity can pull the remaining activities earlier.
+            // Use their new positions when setting the preceding transfer;
+            // original coordinates would insert a second, hidden delay.
+            const afterRemovalIntervals = reordered && remaining.length
+                ? getTimelineIntervals({ startTime: gridTime(remaining[0].start), items: remaining.map(entry => entry.item) })
+                : remaining;
+            const available = previous ? afterRemovalIntervals[insertAt - 1].end : getScheduleStartMinutes();
             const actual = Math.max(target, Math.ceil(available / SCHEDULE_SLOT_MINUTES) * SCHEDULE_SLOT_MINUTES);
             if (actual + duration > SCHEDULE_END) {
                 window.alert('24:00を超える位置には置けません。');
                 renderTimeline();
                 return;
             }
-            if (previous) previous.item.transitAfter = actual - previous.end;
+            if (previous) previous.item.transitAfter = actual - available;
             if (following && moved.item.duration !== 'OVERNIGHT') {
-                // A transfer belongs to the pair of adjacent activities, not
-                // to the moved activity. Preserve the following start if there
-                // is room; otherwise shift it by the standard 30 minutes.
+                // Keep the next start fixed when only adjusting this activity's
+                // position. On a reorder, use the travel time for the new pair
+                // so a temporary overlap cannot push every later event back.
                 const availableGap = following.start - actual - duration;
-                moved.item.transitAfter = availableGap >= 0 ? availableGap : 30;
+                moved.item.transitAfter = reordered ? rememberedGap(moved, following)
+                    : availableGap >= 0 ? availableGap : 30;
             } else if (!following) {
                 moved.item.transitAfter = DEFAULT_LAST_TRANSIT_MINUTES;
             }
