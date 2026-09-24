@@ -92,12 +92,12 @@
             border-radius: 16px;
             background: #FFFDF9;
         }
-        .schedule-canvas { position: relative; height: 720px; min-width: 0; }
+        .schedule-canvas { position: relative; height: 1728px; min-width: 0; }
         .schedule-lane {
             position: absolute;
             top: 0; bottom: 0; left: 58px; right: 8px;
             border-left: 1px solid #E5DACC;
-            background: repeating-linear-gradient(to bottom, transparent 0, transparent 9px, #F2EBE2 9px, #F2EBE2 10px);
+            background: repeating-linear-gradient(to bottom, transparent 0, transparent 23px, #F2EBE2 23px, #F2EBE2 24px);
         }
         .schedule-hour { position: absolute; left: 0; right: 0; height: 0; z-index: 1; pointer-events: none; }
         .schedule-hour::after { content: ''; position: absolute; left: 58px; right: 8px; border-top: 1px solid #DCD0BB; }
@@ -112,8 +112,8 @@
             position: absolute; left: 4px; right: 5px; z-index: 3;
             box-sizing: border-box; overflow: hidden;
             border: 1px solid #DBCDC0; border-left: 4px solid #B8502B;
-            border-radius: 7px; background: #FFFFFF;
-            padding: 2px 6px 6px 4px;
+            border-radius: 9px; background: #FFFFFF;
+            padding: 3px 8px 8px 6px;
             box-shadow: 0 3px 10px rgba(77, 58, 40, .10);
             transition: box-shadow 150ms, border-color 150ms;
             cursor: grab;
@@ -124,27 +124,27 @@
         .schedule-event:hover, .schedule-event:focus-visible { border-color: #B8502B; box-shadow: 0 5px 16px rgba(77, 58, 40, .16); outline: none; }
         .schedule-event.is-dragging { z-index: 20; opacity: .94; box-shadow: 0 16px 28px rgba(77, 58, 40, .24); transition: none; cursor: grabbing; }
         body.is-dragging-schedule { user-select: none; -webkit-user-select: none; }
-        .schedule-event-main { display: flex; align-items: center; gap: 4px; min-width: 0; height: 17px; }
-        .schedule-event-title { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-size: 11px; font-weight: 700; min-width: 0; flex: 1; }
-        .schedule-event-time { white-space: nowrap; color: #A74322; font: 700 9px/1.2 monospace; }
-        .schedule-event-note { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; color: #7C7369; font-size: 10px; margin-left: 28px; }
-        .schedule-event.is-compact { padding: 0 17px 0 4px; border-radius: 4px; box-shadow: none; }
-        .schedule-compact-title { font-size: 9px; line-height: 10px; font-weight: 700; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-        .schedule-event.is-compact .resize-handle { top: 0; bottom: 0; left: auto; right: 0; width: 14px; height: 100%; border-left: 1px solid #EBE2D3; }
-        .schedule-event.is-compact .resize-handle::after { width: 2px; height: 7px; }
+        .schedule-event-main { display: flex; align-items: center; gap: 5px; min-width: 0; height: 20px; }
+        .schedule-event-title { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-size: 12px; font-weight: 700; min-width: 0; flex: 1; }
+        .schedule-event-time { white-space: nowrap; color: #A74322; font: 700 10px/1.2 monospace; }
+        .schedule-event-note { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; color: #6B6056; font-size: 11px; line-height: 15px; margin-left: 29px; }
+        .schedule-event.is-compact { padding: 1px 19px 1px 5px; border-radius: 5px; box-shadow: none; }
+        .schedule-compact-title { font-size: 11px; line-height: 20px; font-weight: 700; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+        .schedule-event.is-compact .resize-handle { top: 0; bottom: 0; left: auto; right: 0; width: 16px; height: 100%; border-left: 1px solid #EBE2D3; }
+        .schedule-event.is-compact .resize-handle::after { width: 2px; height: 9px; }
         .grab-handle {
             display: inline-flex; align-items: center; justify-content: center;
-            width: 18px; height: 17px; flex: none; border-radius: 5px;
+            width: 20px; height: 20px; flex: none; border-radius: 5px;
             color: #9F8C78; cursor: grab; touch-action: none;
         }
         .grab-handle:hover { color: #B8502B; background: #F4EFE6; }
         .grab-handle:active { cursor: grabbing; }
         .resize-handle {
-            position: absolute; bottom: 0; left: 0; right: 0; height: 7px;
+            position: absolute; bottom: 0; left: 0; right: 0; height: 9px;
             display: flex; justify-content: center; align-items: center;
             cursor: ns-resize; touch-action: none;
         }
-        .resize-handle::after { content: ''; width: 32px; height: 2px; border-radius: 3px; background: #CBB7A4; }
+        .resize-handle::after { content: ''; width: 36px; height: 3px; border-radius: 3px; background: #CBB7A4; }
         .resize-handle:hover::after { background: #B8502B; }
         .schedule-transit {
             position: absolute; left: 4px; right: 5px; z-index: 2;
@@ -863,7 +863,7 @@
         const DEFAULT_SCHEDULE_START = 6 * 60;
         const SCHEDULE_END = 24 * 60;
         const SCHEDULE_SLOT_MINUTES = 15;
-        const SCHEDULE_SLOT_HEIGHT = 10;
+        const SCHEDULE_SLOT_HEIGHT = 24;
         let scheduleGesture = null;
         let suppressEventClick = false;
         let editingItemIndex = null;
@@ -921,7 +921,7 @@
                     const height = gridY(bottom) - gridY(top);
                     const category = getCategoryStyle(item.category);
                     const range = `${gridTime(start)}–${item.duration === 'OVERNIGHT' ? '翌朝' : gridTime(end)}`;
-                    const compact = height < 30;
+                    const compact = height < 48;
                     blocks += `<div class="schedule-event ${compact ? 'is-compact' : ''}" data-index="${index}"
                         style="top:${gridY(top)}px;height:${height}px;border-left-color:${item.category === 'Food' ? '#C5954B' : item.category === 'Hotel' ? '#7F6D50' : '#B8502B'}"
                         role="button" tabindex="0" title="${escapeHtml(item.name)} ${escapeHtml(range)}" aria-label="${escapeHtml(item.name)} ${escapeHtml(range)}、詳細を編集"
@@ -933,7 +933,7 @@
                             <span class="schedule-event-title"><i class="fa-solid ${category.icon} text-[10px] text-warm-gold mr-1"></i>${escapeHtml(item.name)}</span>
                             <span class="schedule-event-time">${escapeHtml(range)}</span>
                         </div>`}
-                        ${height >= 56 && item.notes ? `<div class="schedule-event-note">${escapeHtml(item.notes)}</div>` : ''}
+                        ${height >= 48 && item.notes ? `<div class="schedule-event-note">${escapeHtml(item.notes)}</div>` : ''}
                         ${item.duration !== 'OVERNIGHT' ? `<button type="button" class="resize-handle" title="ドラッグで滞在時間を変更" aria-label="${escapeHtml(item.name)}の滞在時間を変更" onpointerdown="beginScheduleGesture(event, ${index}, 'resize')" onkeydown="handleScheduleKey(event, ${index}, 'resize')" onclick="event.stopPropagation()"></button>` : ''}
                     </div>`;
                 } else {
