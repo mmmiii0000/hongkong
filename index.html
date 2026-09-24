@@ -10,8 +10,6 @@
     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
     <!-- Google Fonts (Cinzel / Plus Jakarta Sans / Noto Sans JP) -->
     <link href="https://fonts.googleapis.com/css2?family=Cinzel:wght@500;600;700&family=Noto+Sans+JP:wght@300;400;500;600;700&family=Plus+Jakarta+Sans:wght@400;500;600;700;800&display=swap" rel="stylesheet">
-    <!-- Sortable.js for Drag & Drop Touch Support -->
-    <script src="https://cdnjs.cloudflare.com/ajax/libs/Sortable/1.15.0/Sortable.min.js"></script>
     <!-- html2pdf.js for Reliable PDF Export -->
     <script src="https://cdnjs.cloudflare.com/ajax/libs/html2pdf.js/0.10.1/html2pdf.bundle.min.js"></script>
 
@@ -68,68 +66,111 @@
             border-radius: 9999px;
         }
 
-        /* Grab Cursor Styles */
-        .grab-handle {
-            cursor: grab !important;
-            cursor: -webkit-grab !important;
+        /* Native select arrows take space from the right and make clock digits
+           appear left-aligned even when text-center is applied. */
+        select.clock-hour, select.clock-minute,
+        #dayStartHourSelect, #dayStartMinuteSelect {
+            appearance: none;
+            -webkit-appearance: none;
+            text-align: center;
+            text-align-last: center;
+            padding-left: 0;
+            padding-right: 0;
+            background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 12 8'%3E%3Cpath d='m1 1 5 5 5-5' fill='none' stroke='%239F8C78' stroke-width='1.5'/%3E%3C/svg%3E");
+            background-repeat: no-repeat;
+            background-position: right 3px center;
+            background-size: 8px 6px;
+        }
+        select.clock-hour option, select.clock-minute option,
+        #dayStartHourSelect option, #dayStartMinuteSelect option {
+            text-align: center;
+        }
+
+        .schedule-viewport {
+            max-height: min(72vh, 760px);
+            min-height: 320px;
+            overflow: auto;
+            overscroll-behavior: contain;
+            border: 1px solid #EBE2D3;
+            border-radius: 16px;
+            background: #FFFDF9;
+        }
+        .schedule-canvas { position: relative; height: 2016px; min-width: 0; }
+        .schedule-lane {
+            position: absolute;
+            top: 0; bottom: 0; left: 58px; right: 8px;
+            border-left: 1px solid #E5DACC;
+            background: repeating-linear-gradient(to bottom, transparent 0, transparent 27px, #F2EBE2 27px, #F2EBE2 28px);
+        }
+        .schedule-hour { position: absolute; left: 0; right: 0; height: 0; z-index: 1; pointer-events: none; }
+        .schedule-hour::after { content: ''; position: absolute; left: 58px; right: 8px; border-top: 1px solid #DCD0BB; }
+        .schedule-hour span {
+            position: absolute; top: -8px; left: 5px;
+            font: 600 11px/16px 'Plus Jakarta Sans', sans-serif;
+            color: #8E8070;
+        }
+        .schedule-event {
+            position: absolute; left: 4px; right: 5px; z-index: 3;
+            box-sizing: border-box; overflow: hidden;
+            border: 1px solid #DBCDC0; border-left: 4px solid #B8502B;
+            border-radius: 10px; background: #FFFFFF;
+            padding: 3px 8px 10px 5px;
+            box-shadow: 0 3px 10px rgba(77, 58, 40, .10);
+            transition: box-shadow 150ms, border-color 150ms;
+            cursor: grab;
             touch-action: none;
+            user-select: none;
+            -webkit-user-select: none;
         }
-        .grab-handle:active, .timeline-item:active {
-            cursor: grabbing !important;
-            cursor: -webkit-grabbing !important;
+        .schedule-event:hover, .schedule-event:focus-visible { border-color: #B8502B; box-shadow: 0 5px 16px rgba(77, 58, 40, .16); outline: none; }
+        .schedule-event.is-dragging { z-index: 20; opacity: .94; box-shadow: 0 16px 28px rgba(77, 58, 40, .24); transition: none; cursor: grabbing; }
+        body.is-dragging-schedule { user-select: none; -webkit-user-select: none; }
+        .schedule-event-main { display: flex; align-items: center; gap: 7px; min-width: 0; height: 19px; }
+        .schedule-event-title { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-size: 12px; font-weight: 700; min-width: 0; flex: 1; }
+        .schedule-event-time { white-space: nowrap; color: #A74322; font: 700 10px/1.2 monospace; }
+        .schedule-event-note { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; color: #7C7369; font-size: 10px; margin-left: 28px; }
+        .grab-handle {
+            display: inline-flex; align-items: center; justify-content: center;
+            width: 22px; height: 21px; flex: none; border-radius: 5px;
+            color: #9F8C78; cursor: grab; touch-action: none;
         }
-
-        /* Smooth timeline drag: Sortable controls the moving element's transform.
-           Never override it with !important or animate it during pointer tracking. */
-        .timeline-entry {
-            position: relative;
+        .grab-handle:hover { color: #B8502B; background: #F4EFE6; }
+        .grab-handle:active { cursor: grabbing; }
+        .resize-handle {
+            position: absolute; bottom: 0; left: 0; right: 0; height: 10px;
+            display: flex; justify-content: center; align-items: center;
+            cursor: ns-resize; touch-action: none;
         }
-
-        /* The final activity has no onward journey, but retains its row in the
-           DOM so a reorder never needs to destroy and rebuild every card. */
-        #timelineContainer > .timeline-entry:last-child > .transit-row {
-            display: none;
+        .resize-handle::after { content: ''; width: 36px; height: 3px; border-radius: 3px; background: #CBB7A4; }
+        .resize-handle:hover::after { background: #B8502B; }
+        .schedule-transit {
+            position: absolute; left: 4px; right: 5px; z-index: 2;
+            box-sizing: border-box; overflow: hidden;
+            border-left: 3px dashed rgba(197, 149, 75, .46);
+            background: rgba(197, 149, 75, .085);
+            color: #907A5D; font-size: 10px; padding: 2px 8px;
+            cursor: pointer;
         }
-
-        .timeline-item {
-            transition: box-shadow 150ms ease, border-color 150ms ease, background-color 150ms ease;
+        .schedule-transit:hover { background: rgba(197, 149, 75, .17); }
+        .schedule-drop-guide {
+            position: absolute; left: 0; right: 0; z-index: 19;
+            border-top: 2px dashed #B8502B; pointer-events: none;
         }
-
-        .timeline-entry.sortable-chosen > .timeline-item {
-            border-color: #B8502B;
-            box-shadow: 0 7px 19px rgba(94, 80, 57, 0.12);
+        .schedule-empty {
+            position: absolute; top: 340px; left: 14px; right: 14px; z-index: 2;
+            padding: 16px; border: 1px dashed #CBB7A4; border-radius: 12px;
+            color: #7C7369; text-align: center; font-size: 12px; background: rgba(255,255,255,.85);
         }
-
-        .timeline-entry.sortable-ghost > .timeline-item {
-            opacity: 0.32;
-            border: 2px dashed #B8502B;
-            background: #F4EFE6;
-            box-shadow: none;
-        }
-
-        .timeline-entry.sortable-ghost > .transit-row {
-            opacity: 0.3;
-        }
-
-        /* The fallback clone must follow the pointer at 1:1 speed.
-           In particular, do not set transform or transition:transform here. */
-        .timeline-entry.sortable-drag {
-            z-index: 9999 !important;
-            opacity: 0.98;
-            pointer-events: none;
-            cursor: grabbing !important;
-            transition: none !important;
-        }
-
-        .timeline-entry.sortable-drag > .timeline-item {
-            border-color: #B8502B;
-            box-shadow: 0 18px 38px rgba(94, 80, 57, 0.22), 0 5px 12px rgba(184, 80, 43, 0.12);
-            transition: none;
-        }
-
-        #timelineContainer.is-sorting, #timelineContainer.is-sorting * {
-            user-select: none !important;
-            -webkit-user-select: none !important;
+        #eventEditor { width: min(460px, calc(100vw - 24px)); max-height: min(85vh, 740px); border: 1px solid #EBE2D3; border-radius: 18px; padding: 0; box-shadow: 0 25px 70px rgba(43, 38, 33, .25); }
+        #eventEditor::backdrop { background: rgba(43, 38, 33, .4); }
+        #eventEditorContent { max-height: min(85vh, 740px); overflow-y: auto; }
+        @media (max-width: 480px) {
+            .schedule-lane { left: 48px; right: 4px; }
+            .schedule-hour::after { left: 48px; right: 4px; }
+            .schedule-hour span { left: 3px; font-size: 10px; }
+            .schedule-event { left: 3px; right: 3px; }
+            .schedule-transit { left: 3px; right: 3px; }
+            .schedule-event-time { font-size: 9px; }
         }
 
         .no-scrollbar::-webkit-scrollbar {
@@ -353,18 +394,21 @@
 
             <!-- Timeline Container -->
             <div class="mt-4 relative">
-                <div id="emptyTimelineState" class="hidden py-8 px-4 flex flex-col items-center justify-center text-center border-2 border-dashed border-cream-300 rounded-2xl bg-white/40">
-                    <div class="w-9 h-9 rounded-full bg-cream-200/60 flex items-center justify-center text-cream-600 mb-2">
-                        <i class="fa-solid fa-route text-base"></i>
+                <div class="flex items-center justify-between gap-2 text-[11px] text-warm-textMuted px-1">
+                    <span><i class="fa-solid fa-grip-vertical text-warm-accent mr-1"></i>予定をドラッグして移動、下端をドラッグして長さを変更。押すと詳細を編集できます。</span>
+                    <span class="font-mono shrink-0">6:00–24:00 · 15分刻み</span>
+                </div>
+                <div id="scheduleViewport" class="schedule-viewport mt-2">
+                    <div id="timelineContainer" class="schedule-canvas">
                     </div>
-                    <p class="text-xs font-semibold text-warm-textDark">まだ予定が入っていません</p>
-                    <p class="text-[10px] sm:text-[11px] text-warm-textMuted mt-0.5">上の入力欄、または下の「定番予定」「香港の有名観光地」から追加してください</p>
                 </div>
-
-                <div id="timelineContainer" class="space-y-2 min-h-[100px]">
-                </div>
+                <p id="scheduleOverflowNotice" hidden class="mt-2 text-xs text-warm-textMuted">6:00以前・24:00以降の予定は時間軸の外にあります。予定の詳細から時刻を調整できます。</p>
             </div>
         </section>
+
+        <dialog id="eventEditor" onclick="if (event.target === this) closeEventEditor()" aria-label="予定の詳細を編集">
+            <div id="eventEditorContent"></div>
+        </dialog>
 
         <section class="bg-cream-100/70 border border-cream-200 rounded-2xl p-3.5 sm:p-6 shadow-sm">
             <h2 class="text-base font-bold text-warm-textDark flex items-center gap-2 mb-3.5">
@@ -590,7 +634,6 @@
         let selectedCategory = 'ALL';
         let activeDayIndex = 0;
         let itineraryData = JSON.parse(JSON.stringify(DEFAULT_ITINERARY));
-        let sortableInstance = null;
         let saveBadgeTimer = null;
 
         function autoSaveToLocalStorage() {
@@ -652,6 +695,7 @@
 
         function resetCurrentDay() {
             if (!itineraryData[activeDayIndex]) return;
+            closeEventEditor();
             const initialDay = DEFAULT_ITINERARY[activeDayIndex] || {
                 dayNumber: activeDayIndex + 1, startTime: '09:00', items: []
             };
@@ -716,7 +760,7 @@
             </span>`;
         }
 
-        function recalculateTimes(renderCards = true) {
+        function recalculateTimes() {
             const activeDay = itineraryData[activeDayIndex];
             if (!activeDay || !activeDay.items) return;
 
@@ -749,11 +793,7 @@
                 }
             });
 
-            if (renderCards) {
-                renderTimeline();
-            } else {
-                syncTimelineAfterSort();
-            }
+            renderTimeline();
             updateSummaryBar();
             autoSaveToLocalStorage();
         }
@@ -807,231 +847,360 @@
             ).join('') + `<option value="OVERNIGHT" ${duration === 'OVERNIGHT' ? 'selected' : ''}>🌙 翌朝まで</option>`;
         }
 
-        function renderTimeline() {
-            const activeDay = itineraryData[activeDayIndex];
-            const container = document.getElementById('timelineContainer');
-            const emptyState = document.getElementById('emptyTimelineState');
+        const SCHEDULE_START = 6 * 60;
+        const SCHEDULE_END = 24 * 60;
+        const SCHEDULE_SLOT_MINUTES = 15;
+        const SCHEDULE_SLOT_HEIGHT = 28;
+        let scheduleGesture = null;
+        let suppressEventClick = false;
+        let editingItemIndex = null;
 
-            if (!activeDay || activeDay.items.length === 0) {
-                container.innerHTML = '';
-                emptyState.classList.remove('hidden');
-                updateSummaryBar();
-                return;
-            }
+        function gridY(minutes) {
+            return (minutes - SCHEDULE_START) / SCHEDULE_SLOT_MINUTES * SCHEDULE_SLOT_HEIGHT;
+        }
 
-            emptyState.classList.add('hidden');
+        function gridTime(minutes) {
+            return minutes === SCHEDULE_END ? '24:00' : minutesToTime(minutes);
+        }
 
-            let htmlContent = '';
-
-            activeDay.items.forEach((item, index) => {
-                htmlContent += `
-                    <div data-index="${index}" class="timeline-entry group">
-                    <div class="timeline-item bg-white rounded-xl p-3 sm:p-3.5 border border-cream-200 hover:border-warm-accent/50 flex flex-col sm:flex-row items-start sm:items-center justify-between gap-2.5 shadow-sm">
-                        
-                        <div class="flex flex-wrap items-center gap-2 w-full sm:w-auto justify-between sm:justify-start">
-                            <div class="flex items-center gap-2">
-                                <div class="grab-handle text-cream-400 group-hover:text-warm-accent transition p-1.5 rounded flex items-center justify-center shrink-0">
-                                    <i class="fa-solid fa-grip-vertical text-sm"></i>
-                                </div>
-
-                                <div class="flex items-center gap-1 font-mono text-xs font-bold text-warm-accent bg-cream-50 px-2 py-1 rounded-lg border border-cream-200">
-                                    ${renderClockPicker(item.startTime, '開始時刻', index, 'start')}
-                                    <span class="text-cream-400">-</span>
-                                    ${renderClockPicker(item.endTime, '終了時刻', index, 'end')}
-                                </div>
-                            </div>
-
-                            <div class="flex items-center gap-1">
-                                <select onchange="updateItemDuration(${index}, this.value)"
-                                    onclick="event.stopPropagation()"
-                                    class="bg-white border border-cream-300 rounded text-center text-warm-textDark px-1.5 py-0.5 text-xs font-mono font-bold focus:outline-none focus:border-warm-accent cursor-pointer">
-                                    ${renderDurationOptions(item.duration)}
-                                </select>
-
-                                <button onclick="removeTimelineItem(${index})" title="削除"
-                                    class="sm:hidden w-7 h-7 rounded-lg hover:bg-rose-50 text-cream-400 hover:text-rose-600 flex items-center justify-center transition">
-                                    <i class="fa-solid fa-trash-can text-xs"></i>
-                                </button>
-                            </div>
-                        </div>
-
-                        <div class="flex-1 min-w-0 w-full space-y-1">
-                            <div class="flex items-center gap-1.5">
-                                <input type="text" value="${escapeHtml(item.name)}" 
-                                    onchange="updateItemName(${index}, this.value)"
-                                    onclick="event.stopPropagation()"
-                                    placeholder="予定名を入力..."
-                                    class="font-bold text-xs sm:text-sm text-warm-textDark bg-transparent hover:bg-cream-50 focus:bg-white border-b border-transparent hover:border-cream-300 focus:border-warm-accent px-1 py-0.5 rounded transition focus:outline-none flex-1 min-w-[120px]">
-                                
-                                <select onchange="updateItemCategory(${index}, this.value)"
-                                    onclick="event.stopPropagation()"
-                                    class="text-[10px] font-medium border px-1.5 py-0.5 rounded bg-white border-cream-300 text-warm-textDark focus:outline-none cursor-pointer">
-                                    <option value="Landmark" ${item.category === 'Landmark' ? 'selected' : ''}>定番名所</option>
-                                    <option value="Culture" ${item.category === 'Culture' ? 'selected' : ''}>歴史・文化</option>
-                                    <option value="Food" ${item.category === 'Food' ? 'selected' : ''}>グルメ・飲茶</option>
-                                    <option value="Shopping" ${item.category === 'Shopping' ? 'selected' : ''}>買物</option>
-                                    <option value="Nature" ${item.category === 'Nature' ? 'selected' : ''}>絶景・自然</option>
-                                    <option value="ThemePark" ${item.category === 'ThemePark' ? 'selected' : ''}>テーマパーク</option>
-                                    <option value="Art" ${item.category === 'Art' ? 'selected' : ''}>アート・建築</option>
-                                    <option value="Hotel" ${item.category === 'Hotel' ? 'selected' : ''}>移動・ホテル</option>
-                                    <option value="Other" ${item.category === 'Other' ? 'selected' : ''}>その他</option>
-                                </select>
-                            </div>
-
-                            <input type="text" value="${escapeHtml(item.notes || '')}" placeholder="メモ・予約情報など..." 
-                                onchange="updateItemNotes(${index}, this.value)"
-                                onclick="event.stopPropagation()"
-                                class="w-full bg-transparent text-[11px] sm:text-xs text-warm-textMuted placeholder-cream-400 focus:text-warm-textDark border-b border-dashed border-cream-200 focus:border-warm-accent px-1 py-0.5 transition focus:outline-none">
-                        </div>
-
-                        <div class="hidden sm:flex items-center gap-1 shrink-0">
-                            <button onclick="removeTimelineItem(${index})" title="削除"
-                                class="w-7 h-7 rounded-lg hover:bg-rose-50 text-cream-400 hover:text-rose-600 flex items-center justify-center transition">
-                                <i class="fa-solid fa-trash-can text-xs"></i>
-                            </button>
-                        </div>
-                    </div>
-                `;
-
-                // Keep a transit row in every wrapper; CSS hides the last one.
-                // This avoids recreating the DOM when the last activity is moved.
-                {
-                    const transitVal = item.transitAfter !== undefined ? item.transitAfter : 30;
-                    const transitNoteVal = item.transitNotes || '';
-                    htmlContent += `
-                        <div class="transit-row flex flex-col sm:flex-row items-stretch sm:items-center justify-between gap-1.5 mt-2 py-1 px-3 bg-cream-100/60 border border-dashed border-cream-300 rounded-xl text-xs text-warm-textMuted select-none">
-                            <div class="flex items-center gap-2 shrink-0">
-                                <span class="text-warm-gold font-medium text-[11px] flex items-center gap-1">
-                                    <i class="fa-solid fa-person-walking text-xs"></i> 移動:
-                                </span>
-                                <div class="flex items-center gap-1 bg-white px-1.5 py-0.5 rounded border border-cream-300">
-                                    <input type="number" min="0" max="1439" step="1" value="${transitVal}" 
-                                        onchange="updateTransitTime(${index}, this.value)"
-                                        onclick="event.stopPropagation()"
-                                        class="w-9 bg-transparent text-center font-mono font-bold text-xs text-warm-textDark focus:outline-none">
-                                    <span class="text-[10px] text-warm-textMuted">分</span>
-                                </div>
-                            </div>
-
-                            <div class="flex-1 min-w-0 flex items-center gap-1">
-                                <input type="text" value="${escapeHtml(transitNoteVal)}" 
-                                    placeholder="移動メモ (例: MTR, 徒歩5分)" 
-                                    onchange="updateTransitNotes(${index}, this.value)"
-                                    onclick="event.stopPropagation()"
-                                    class="w-full bg-white/80 hover:bg-white focus:bg-white border border-transparent hover:border-cream-300 focus:border-warm-accent rounded px-2 py-0.5 text-[11px] text-warm-textDark placeholder-cream-400 transition focus:outline-none">
-                            </div>
-                        </div>
-                    `;
+        // Derive an absolute position for each activity. Unlike the displayed
+        // clock, the absolute minute count still distinguishes midnight.
+        function getTimelineIntervals(day) {
+            let minute = timeToMinutes(day.startTime || '09:00');
+            return (day.items || []).map((item, index) => {
+                const start = minute;
+                const end = item.duration === 'OVERNIGHT'
+                    ? SCHEDULE_END
+                    : start + (parseInt(item.duration, 10) || 30);
+                if (index < day.items.length - 1) {
+                    minute = end + (parseInt(item.transitAfter ?? 30, 10) || 0);
                 }
-                // Move the activity and its following transit information together.
-                htmlContent += `</div>`;
+                return { item, start, end };
+            });
+        }
+
+        function renderTimeline() {
+            const day = itineraryData[activeDayIndex];
+            const container = document.getElementById('timelineContainer');
+            const viewport = document.getElementById('scheduleViewport');
+            const oldScroll = viewport.scrollTop;
+            const intervals = getTimelineIntervals(day);
+            const hourLines = Array.from({ length: 19 }, (_, index) => {
+                const minute = SCHEDULE_START + index * 60;
+                return `<div class="schedule-hour" style="top:${gridY(minute)}px"><span>${gridTime(minute)}</span></div>`;
+            }).join('');
+            let blocks = '';
+            let hasHiddenEntries = false;
+
+            intervals.forEach(({ item, start, end }, index) => {
+                const top = Math.max(start, SCHEDULE_START);
+                const bottom = Math.min(end, SCHEDULE_END);
+                if (bottom > top) {
+                    if (start < SCHEDULE_START || end > SCHEDULE_END) hasHiddenEntries = true;
+                    const height = gridY(bottom) - gridY(top);
+                    const category = getCategoryStyle(item.category);
+                    const range = `${gridTime(start)}–${item.duration === 'OVERNIGHT' ? '翌朝' : gridTime(end)}`;
+                    blocks += `<div class="schedule-event" data-index="${index}"
+                        style="top:${gridY(top)}px;height:${height}px;border-left-color:${item.category === 'Food' ? '#C5954B' : item.category === 'Hotel' ? '#7F6D50' : '#B8502B'}"
+                        role="button" tabindex="0" aria-label="${escapeHtml(item.name)} ${escapeHtml(range)}、詳細を編集"
+                        onpointerdown="beginScheduleGesture(event, ${index}, 'move')"
+                        onclick="if (!suppressEventClick) openEventEditor(${index})"
+                        onkeydown="if (event.target === this && (event.key === 'Enter' || event.key === ' ')) {event.preventDefault(); openEventEditor(${index})}">
+                        <div class="schedule-event-main">
+                            <button type="button" class="grab-handle" title="ドラッグで開始時刻を変更" aria-label="${escapeHtml(item.name)}を移動" onpointerdown="beginScheduleGesture(event, ${index}, 'move')" onkeydown="handleScheduleKey(event, ${index}, 'move')" onclick="event.stopPropagation()"><i class="fa-solid fa-grip-vertical"></i></button>
+                            <span class="schedule-event-title"><i class="fa-solid ${category.icon} text-[10px] text-warm-gold mr-1"></i>${escapeHtml(item.name)}</span>
+                            <span class="schedule-event-time">${escapeHtml(range)}</span>
+                        </div>
+                        ${height >= 56 && item.notes ? `<div class="schedule-event-note">${escapeHtml(item.notes)}</div>` : ''}
+                        ${item.duration !== 'OVERNIGHT' ? `<button type="button" class="resize-handle" title="ドラッグで滞在時間を変更" aria-label="${escapeHtml(item.name)}の滞在時間を変更" onpointerdown="beginScheduleGesture(event, ${index}, 'resize')" onkeydown="handleScheduleKey(event, ${index}, 'resize')" onclick="event.stopPropagation()"></button>` : ''}
+                    </div>`;
+                } else {
+                    hasHiddenEntries = true;
+                }
+
+                const next = intervals[index + 1];
+                if (next && end < next.start && end < SCHEDULE_END && next.start > SCHEDULE_START) {
+                    const bandStart = Math.max(end, SCHEDULE_START);
+                    const bandEnd = Math.min(next.start, SCHEDULE_END);
+                    const bandHeight = gridY(bandEnd) - gridY(bandStart);
+                    if (bandHeight > 0) {
+                        blocks += `<div class="schedule-transit" style="top:${gridY(bandStart)}px;height:${bandHeight}px" role="button" tabindex="0" title="移動時間を編集"
+                            onclick="openEventEditor(${index})" onkeydown="if(event.key === 'Enter' || event.key === ' ') {event.preventDefault();openEventEditor(${index})}">
+                            ${bandHeight >= 18 ? `<i class="fa-solid fa-person-walking mr-1"></i>移動 ${Number(item.transitAfter ?? 30)}分${item.transitNotes ? ` · ${escapeHtml(item.transitNotes)}` : ''}` : ''}
+                        </div>`;
+                    }
+                }
             });
 
-            container.innerHTML = htmlContent;
-
-            initSortable();
+            if (!intervals.length) {
+                blocks = `<div class="schedule-empty">まだ予定がありません。上の入力欄、または下の「定番予定」「香港の有名観光地」から追加できます。</div>`;
+            }
+            container.innerHTML = `${hourLines}<div class="schedule-lane">${blocks}<div class="schedule-drop-guide" hidden></div></div>`;
+            document.getElementById('scheduleOverflowNotice').hidden = !hasHiddenEntries;
+            viewport.scrollTop = oldScroll;
             updateSummaryBar();
+            const editor = document.getElementById('eventEditor');
+            if (editor.open) renderEventEditor();
         }
 
         function escapeHtml(str) {
             if (!str) return '';
-            return String(str).replace(/&/g, "&amp;")
-                              .replace(/</g, "&lt;")
-                              .replace(/>/g, "&gt;")
-                              .replace(/"/g, "&quot;")
-                              .replace(/'/g, "&#039;");
+            return String(str).replace(/&/g, '&amp;').replace(/</g, '&lt;')
+                .replace(/>/g, '&gt;').replace(/"/g, '&quot;').replace(/'/g, '&#039;');
         }
 
-        // Preserve the actual DOM on drop; replacing innerHTML here would cause
-        // a visible snap and discard Sortable's final movement animation.
-        function syncTimelineAfterSort() {
-            const container = document.getElementById('timelineContainer');
-            const items = itineraryData[activeDayIndex].items;
-            let needsRebuild = false;
-            Array.from(container.children).forEach((entry, index) => {
-                if (!entry.classList.contains('timeline-entry')) return;
-                entry.dataset.index = String(index);
-                for (const [selector, value] of [
-                    ['.timeline-time-start', items[index].startTime],
-                    ['.timeline-time-end', items[index].endTime]
-                ]) {
-                    const control = entry.querySelector(selector);
-                    const hourSelect = control && control.querySelector('.clock-hour');
-                    if (!control || Boolean(hourSelect) === (value === '翌朝')) {
-                        needsRebuild = true;
-                    } else if (hourSelect) {
-                        const [hour, minute] = value.split(':');
-                        hourSelect.value = hour;
-                        control.querySelector('.clock-minute').innerHTML = renderMinuteOptions(minute);
-                    } else {
-                        control.textContent = value;
-                    }
-                }
-
-                // Inline edit/remove actions must reference the NEW list indices.
-                entry.querySelectorAll('[onchange], [onclick]').forEach(control => {
-                    ['onchange', 'onclick'].forEach(attribute => {
-                        const handler = control.getAttribute(attribute);
-                        if (!handler) return;
-                        control.setAttribute(attribute, handler.replace(
-                            /(updateItemDuration|updateTimelineClock|removeTimelineItem|updateItemName|updateItemCategory|updateItemNotes|updateTransitTime|updateTransitNotes)\(\d+/g,
-                            (_, action) => `${action}(${index}`
-                        ));
-                    });
-                });
-            });
-            if (needsRebuild) renderTimeline();
+        function renderEventEditor() {
+            const day = itineraryData[activeDayIndex];
+            const item = day && day.items[editingItemIndex];
+            if (!item) { closeEventEditor(); return; }
+            const index = editingItemIndex;
+            const hasNext = index < day.items.length - 1;
+            const categories = [
+                ['Landmark', '定番名所'], ['Culture', '歴史・文化'], ['Food', 'グルメ・飲茶'],
+                ['Shopping', '買物'], ['Nature', '絶景・自然'], ['ThemePark', 'テーマパーク'],
+                ['Art', 'アート・建築'], ['Hotel', '移動・ホテル'], ['Other', 'その他']
+            ];
+            document.getElementById('eventEditorContent').innerHTML = `
+                <div class="sticky top-0 bg-white border-b border-cream-200 px-5 py-3 flex items-center justify-between z-10">
+                    <h3 class="font-bold text-sm">予定の詳細</h3>
+                    <button type="button" onclick="closeEventEditor()" aria-label="閉じる" class="w-8 h-8 rounded-lg hover:bg-cream-100"><i class="fa-solid fa-xmark"></i></button>
+                </div>
+                <div class="p-5 space-y-4 text-xs">
+                    <label class="block font-semibold">予定名
+                        <input type="text" value="${escapeHtml(item.name)}" onchange="updateItemName(${index},this.value);renderTimeline()" class="block mt-1 w-full rounded-lg border border-cream-300 p-2 font-normal focus:outline-none focus:border-warm-accent">
+                    </label>
+                    <div class="grid grid-cols-2 gap-3">
+                        <label class="font-semibold">分類
+                            <select onchange="updateItemCategory(${index},this.value)" class="block mt-1 w-full rounded-lg border border-cream-300 p-2 font-normal">${categories.map(([value, label]) => `<option value="${value}" ${item.category === value ? 'selected' : ''}>${label}</option>`).join('')}</select>
+                        </label>
+                        <label class="font-semibold">滞在時間
+                            <select onchange="updateItemDuration(${index},this.value)" class="block mt-1 w-full rounded-lg border border-cream-300 p-2 font-normal">${renderDurationOptions(item.duration)}</select>
+                        </label>
+                    </div>
+                    <div class="grid grid-cols-2 gap-3">
+                        <div><div class="font-semibold mb-1">開始</div><div class="flex items-center gap-1">${renderClockPicker(item.startTime,'開始時刻',index,'start')}</div></div>
+                        <div><div class="font-semibold mb-1">終了</div><div class="flex items-center gap-1">${renderClockPicker(item.endTime,'終了時刻',index,'end')}</div></div>
+                    </div>
+                    <label class="block font-semibold">メモ
+                        <input type="text" value="${escapeHtml(item.notes || '')}" onchange="updateItemNotes(${index},this.value);renderTimeline()" placeholder="予約情報など" class="block mt-1 w-full rounded-lg border border-cream-300 p-2 font-normal focus:outline-none focus:border-warm-accent">
+                    </label>
+                    ${hasNext ? `<div class="rounded-xl bg-cream-100/60 border border-cream-200 p-3 space-y-2">
+                        <div class="font-semibold text-warm-textMuted"><i class="fa-solid fa-person-walking mr-1"></i>次の予定までの移動</div>
+                        <label class="flex items-center gap-2">時間 <input type="number" min="0" max="1439" step="1" value="${Number(item.transitAfter ?? 30)}" onchange="updateTransitTime(${index},this.value)" class="w-20 rounded-lg border border-cream-300 p-1.5 font-normal text-center">分</label>
+                        <input type="text" value="${escapeHtml(item.transitNotes || '')}" onchange="updateTransitNotes(${index},this.value);renderTimeline()" placeholder="移動メモ" class="w-full rounded-lg border border-cream-300 p-2 font-normal">
+                    </div>` : ''}
+                    <button type="button" onclick="removeTimelineItem(${index})" class="w-full py-2 rounded-lg border border-rose-200 text-rose-700 hover:bg-rose-50"><i class="fa-solid fa-trash-can mr-1"></i>この予定を削除</button>
+                </div>`;
         }
 
-        function initSortable() {
-            const container = document.getElementById('timelineContainer');
-            if (sortableInstance) {
-                sortableInstance.destroy();
-                sortableInstance = null;
+        function openEventEditor(index) {
+            editingItemIndex = index;
+            renderEventEditor();
+            const editor = document.getElementById('eventEditor');
+            if (!editor.open) editor.showModal();
+        }
+
+        function closeEventEditor() {
+            editingItemIndex = null;
+            const editor = document.getElementById('eventEditor');
+            if (editor && editor.open) editor.close();
+        }
+
+        function beginScheduleGesture(event, index, mode) {
+            if (event.button !== undefined && event.button !== 0) return;
+            // Allow the card's native click after a tap; the resize and grab
+            // handles have their own pointer and click behavior.
+            if (event.currentTarget !== event.currentTarget.closest('.schedule-event')) event.preventDefault();
+            event.stopPropagation();
+            const viewport = document.getElementById('scheduleViewport');
+            const lane = document.querySelector('#timelineContainer .schedule-lane');
+            const card = event.currentTarget.closest('.schedule-event');
+            const interval = getTimelineIntervals(itineraryData[activeDayIndex])[index];
+            if (!card || !interval || !lane) return;
+            scheduleGesture = {
+                pointerId: event.pointerId, handle: event.currentTarget, card, lane, viewport,
+                mode, index, interval, startY: event.clientY, clientY: event.clientY,
+                startScroll: viewport.scrollTop, value: mode === 'move' ? interval.start : Number(interval.item.duration),
+                moved: false, frame: null
+            };
+            event.currentTarget.setPointerCapture(event.pointerId);
+            event.currentTarget.addEventListener('pointermove', continueScheduleGesture);
+            event.currentTarget.addEventListener('pointerup', endScheduleGesture);
+            event.currentTarget.addEventListener('pointercancel', cancelScheduleGesture);
+            scheduleGesture.frame = requestAnimationFrame(autoScrollScheduleGesture);
+        }
+
+        function continueScheduleGesture(event) {
+            const gesture = scheduleGesture;
+            if (!gesture || event.pointerId !== gesture.pointerId) return;
+            event.preventDefault();
+            gesture.clientY = event.clientY;
+            if (Math.abs(event.clientY - gesture.startY) >= 4) {
+                gesture.moved = true;
+                document.body.classList.add('is-dragging-schedule');
             }
+            updateScheduleGesturePreview();
+        }
 
-            sortableInstance = new Sortable(container, {
-                animation: 180,
-                easing: 'cubic-bezier(0.22, 1, 0.36, 1)',
-                draggable: '.timeline-entry',
-                handle: '.grab-handle',
-                ghostClass: 'sortable-ghost',
-                chosenClass: 'sortable-chosen',
-                dragClass: 'sortable-drag',
-                forceFallback: true,
-                fallbackClass: 'sortable-drag',
-                fallbackOnBody: true,
-                fallbackTolerance: 2,
-                touchStartThreshold: 3,
-                swapThreshold: 0.55,
-                scroll: true,
-                scrollSensitivity: 60,
-                scrollSpeed: 12,
-                onStart: function () {
-                    container.classList.add('is-sorting');
-                },
-                onUnchoose: function () {
-                    container.classList.remove('is-sorting');
-                },
-                onEnd: function (evt) {
-                    container.classList.remove('is-sorting');
-                    if (evt.oldIndex === evt.newIndex) return;
-
-                    const activeDay = itineraryData[activeDayIndex];
-                    // Only direct sortable children count: transit rows belong to their item.
-                    const entries = Array.from(container.children).filter(el => el.classList.contains('timeline-entry'));
-                    const orderedItems = entries.map(el => {
-                        const index = Number(el.dataset.index);
-                        return activeDay.items[index];
-                    });
-                    if (orderedItems.length !== activeDay.items.length || orderedItems.some(item => !item)) {
-                        renderTimeline();
-                        return;
-                    }
-                    activeDay.items = orderedItems;
-                    recalculateTimes(false);
+        function updateScheduleGesturePreview() {
+            const gesture = scheduleGesture;
+            if (!gesture || !gesture.moved) return;
+            const delta = gesture.clientY - gesture.startY + gesture.viewport.scrollTop - gesture.startScroll;
+            const slots = Math.round(delta / SCHEDULE_SLOT_HEIGHT);
+            const guide = gesture.lane.querySelector('.schedule-drop-guide');
+            gesture.card.classList.add('is-dragging');
+            if (gesture.mode === 'move') {
+                const duration = gesture.interval.item.duration === 'OVERNIGHT' ? 15 : Number(gesture.interval.item.duration);
+                const maxStart = Math.floor((SCHEDULE_END - duration) / SCHEDULE_SLOT_MINUTES) * SCHEDULE_SLOT_MINUTES;
+                gesture.value = Math.max(SCHEDULE_START, Math.min(maxStart,
+                    Math.round(gesture.interval.start / SCHEDULE_SLOT_MINUTES) * SCHEDULE_SLOT_MINUTES + slots * SCHEDULE_SLOT_MINUTES));
+                const otherEntries = getTimelineIntervals(itineraryData[activeDayIndex]).filter((_, i) => i !== gesture.index);
+                let insertAt = gesture.interval.item.duration === 'OVERNIGHT' ? otherEntries.length :
+                    otherEntries.findIndex(entry => entry.start >= gesture.value || entry.item.duration === 'OVERNIGHT');
+                if (insertAt < 0) insertAt = otherEntries.length;
+                const previous = otherEntries[insertAt - 1];
+                if (previous) {
+                    gesture.value = Math.max(gesture.value,
+                        Math.ceil(previous.end / SCHEDULE_SLOT_MINUTES) * SCHEDULE_SLOT_MINUTES);
                 }
-            });
+                gesture.card.style.top = `${gridY(gesture.value)}px`;
+                gesture.card.querySelector('.schedule-event-time').textContent = `${gridTime(gesture.value)}–${gesture.interval.item.duration === 'OVERNIGHT' ? '翌朝' : gridTime(gesture.value + duration)}`;
+                guide.style.top = `${gridY(gesture.value)}px`;
+            } else {
+                const maxDuration = Math.max(15,
+                    Math.floor((SCHEDULE_END - gesture.interval.start) / SCHEDULE_SLOT_MINUTES) * SCHEDULE_SLOT_MINUTES);
+                gesture.value = Math.max(15, Math.min(maxDuration,
+                    Math.round(Number(gesture.interval.item.duration) / SCHEDULE_SLOT_MINUTES) * SCHEDULE_SLOT_MINUTES + slots * SCHEDULE_SLOT_MINUTES));
+                gesture.card.style.height = `${gridY(gesture.value + SCHEDULE_START)}px`;
+                gesture.card.querySelector('.schedule-event-time').textContent = `${gridTime(gesture.interval.start)}–${gridTime(gesture.interval.start + gesture.value)}`;
+                guide.style.top = `${gridY(gesture.interval.start + gesture.value)}px`;
+            }
+            guide.hidden = false;
+        }
+
+        function autoScrollScheduleGesture() {
+            const gesture = scheduleGesture;
+            if (!gesture) return;
+            if (gesture.moved) {
+                const rect = gesture.viewport.getBoundingClientRect();
+                if (gesture.clientY < rect.top + 48) gesture.viewport.scrollTop -= 12;
+                else if (gesture.clientY > rect.bottom - 48) gesture.viewport.scrollTop += 12;
+                updateScheduleGesturePreview();
+            }
+            gesture.frame = requestAnimationFrame(autoScrollScheduleGesture);
+        }
+
+        function finishScheduleGesture(event, cancelled) {
+            const gesture = scheduleGesture;
+            if (!gesture || event.pointerId !== gesture.pointerId) return;
+            cancelAnimationFrame(gesture.frame);
+            gesture.handle.removeEventListener('pointermove', continueScheduleGesture);
+            gesture.handle.removeEventListener('pointerup', endScheduleGesture);
+            gesture.handle.removeEventListener('pointercancel', cancelScheduleGesture);
+            if (gesture.handle.hasPointerCapture(event.pointerId)) gesture.handle.releasePointerCapture(event.pointerId);
+            scheduleGesture = null;
+            document.body.classList.remove('is-dragging-schedule');
+            if (cancelled || !gesture.moved) {
+                if (gesture.moved) renderTimeline();
+                return;
+            }
+            suppressEventClick = true;
+            setTimeout(() => { suppressEventClick = false; }, 100);
+            if (gesture.mode === 'move') moveTimelineItemToTime(gesture.index, gesture.value);
+            else resizeTimelineItem(gesture.index, gesture.value);
+        }
+
+        function endScheduleGesture(event) { finishScheduleGesture(event, false); }
+        function cancelScheduleGesture(event) { finishScheduleGesture(event, true); }
+
+        function handleScheduleKey(event, index, mode) {
+            if (event.key !== 'ArrowUp' && event.key !== 'ArrowDown') return;
+            event.preventDefault();
+            event.stopPropagation();
+            const interval = getTimelineIntervals(itineraryData[activeDayIndex])[index];
+            const delta = event.key === 'ArrowDown' ? 15 : -15;
+            if (mode === 'move') moveTimelineItemToTime(index, interval.start + delta);
+            else resizeTimelineItem(index, Number(interval.item.duration) + delta);
+        }
+
+        function moveTimelineItemToTime(index, targetMinute) {
+            const day = itineraryData[activeDayIndex];
+            const original = getTimelineIntervals(day);
+            const copies = day.items.map(item => ({ ...item }));
+            const positions = original.map((entry, i) => ({ ...entry, item: copies[i] }));
+            const moved = positions[index];
+            if (!moved) return;
+            const duration = moved.item.duration === 'OVERNIGHT' ? 15 : Number(moved.item.duration);
+            const maxStart = Math.floor((SCHEDULE_END - duration) / SCHEDULE_SLOT_MINUTES) * SCHEDULE_SLOT_MINUTES;
+            const target = Math.max(SCHEDULE_START, Math.min(maxStart,
+                Math.round(targetMinute / SCHEDULE_SLOT_MINUTES) * SCHEDULE_SLOT_MINUTES));
+            const remaining = positions.filter((_, i) => i !== index);
+            const beforeRemoval = positions[index - 1];
+            const afterRemoval = positions[index + 1];
+            if (beforeRemoval && afterRemoval && beforeRemoval.item.duration !== 'OVERNIGHT') {
+                beforeRemoval.item.transitAfter = Math.max(0, afterRemoval.start - beforeRemoval.end);
+            }
+            let insertAt = moved.item.duration === 'OVERNIGHT' ? remaining.length :
+                remaining.findIndex(entry => entry.start >= target || entry.item.duration === 'OVERNIGHT');
+            if (insertAt < 0) insertAt = remaining.length;
+            const previous = remaining[insertAt - 1];
+            const following = remaining[insertAt];
+            const available = previous ? previous.end : SCHEDULE_START;
+            const actual = Math.max(target, Math.ceil(available / SCHEDULE_SLOT_MINUTES) * SCHEDULE_SLOT_MINUTES);
+            if (actual + duration > SCHEDULE_END) {
+                window.alert('24:00を超える位置には置けません。');
+                renderTimeline();
+                return;
+            }
+            if (previous) previous.item.transitAfter = actual - previous.end;
+            if (following && moved.item.duration !== 'OVERNIGHT') {
+                moved.item.transitAfter = Math.max(Number(moved.item.transitAfter ?? 30), following.start - actual - duration);
+            }
+            remaining.splice(insertAt, 0, moved);
+            const proposed = {
+                startTime: gridTime(insertAt === 0 ? actual : remaining[0].start),
+                items: remaining.map(entry => entry.item)
+            };
+            const result = getTimelineIntervals(proposed);
+            if (result.length && result[result.length - 1].end > SCHEDULE_END &&
+                original[original.length - 1].end <= SCHEDULE_END) {
+                window.alert('後続の予定が24:00を超えます。置く位置を調整してください。');
+                renderTimeline();
+                return;
+            }
+            day.startTime = proposed.startTime;
+            day.items = proposed.items;
+            recalculateTimes();
+            renderDayTabs();
+        }
+
+        function resizeTimelineItem(index, requestedDuration) {
+            const day = itineraryData[activeDayIndex];
+            const original = getTimelineIntervals(day);
+            const current = original[index];
+            if (!current || current.item.duration === 'OVERNIGHT') return;
+            const max = Math.max(15,
+                Math.floor((SCHEDULE_END - current.start) / SCHEDULE_SLOT_MINUTES) * SCHEDULE_SLOT_MINUTES);
+            const duration = Math.max(15, Math.min(max,
+                Math.round(requestedDuration / SCHEDULE_SLOT_MINUTES) * SCHEDULE_SLOT_MINUTES));
+            const copied = day.items.map(item => ({ ...item }));
+            copied[index].duration = duration;
+            const next = original[index + 1];
+            if (next) {
+                const newEnd = current.start + duration;
+                copied[index].transitAfter = newEnd <= next.start
+                    ? next.start - newEnd
+                    : Number(current.item.transitAfter ?? 30);
+            }
+            const proposed = getTimelineIntervals({ startTime: day.startTime, items: copied });
+            if (proposed.length && proposed[proposed.length - 1].end > SCHEDULE_END &&
+                original[original.length - 1].end <= SCHEDULE_END) {
+                window.alert('後続の予定が24:00を超えます。長さを短くしてください。');
+                renderTimeline();
+                return;
+            }
+            day.items = copied;
+            recalculateTimes();
         }
 
         function updateSummaryBar() {
@@ -1040,7 +1209,8 @@
                 document.getElementById('summaryCount').innerText = '0';
                 document.getElementById('summaryDuration').innerText = '0分';
                 document.getElementById('summaryTransit').innerText = '0分';
-                document.getElementById('summaryTimeRange').innerText = '09:00 ~ 09:00';
+                const start = activeDay?.startTime || '09:00';
+                document.getElementById('summaryTimeRange').innerText = `${start} ~ ${start}`;
                 return;
             }
 
@@ -1255,12 +1425,17 @@
         function updateItemDuration(index, val) {
             if (val === 'OVERNIGHT') {
                 itineraryData[activeDayIndex].items[index].duration = 'OVERNIGHT';
+                recalculateTimes();
             } else {
                 const parsed = parseInt(val, 10);
                 if (isNaN(parsed) || parsed < 1) return;
-                itineraryData[activeDayIndex].items[index].duration = parsed;
+                if (itineraryData[activeDayIndex].items[index].duration !== 'OVERNIGHT') {
+                    resizeTimelineItem(index, parsed);
+                } else {
+                    itineraryData[activeDayIndex].items[index].duration = parsed;
+                    recalculateTimes();
+                }
             }
-            recalculateTimes();
         }
 
         function isValidClockTime(value) {
@@ -1345,6 +1520,7 @@
         }
 
         function removeTimelineItem(index) {
+            closeEventEditor();
             itineraryData[activeDayIndex].items.splice(index, 1);
             recalculateTimes();
         }
@@ -1363,13 +1539,14 @@
         }
 
         function switchDay(index) {
+            closeEventEditor();
             activeDayIndex = index;
             renderDayTabs();
-            renderTimeline();
-            autoSaveToLocalStorage();
+            recalculateTimes();
         }
 
         function addNewDay() {
+            closeEventEditor();
             const nextNum = itineraryData.length + 1;
             itineraryData.push({ dayNumber: nextNum, startTime: '09:00', items: [] });
             activeDayIndex = itineraryData.length - 1;
@@ -1379,17 +1556,18 @@
 
         function removeDay(index) {
             if (itineraryData.length <= 1) return;
+            closeEventEditor();
             itineraryData.splice(index, 1);
             itineraryData.forEach((day, i) => day.dayNumber = i + 1);
             activeDayIndex = Math.max(0, index - 1);
             renderDayTabs();
-            renderTimeline();
-            autoSaveToLocalStorage();
+            recalculateTimes();
         }
 
         function clearCurrentDay() {
             const activeDay = itineraryData[activeDayIndex];
             if (!activeDay) return;
+            closeEventEditor();
             activeDay.items = [];
             recalculateTimes();
         }
