@@ -87,20 +87,17 @@
         }
 
         .schedule-viewport {
-            max-height: min(72vh, 760px);
-            min-height: 320px;
-            overflow: auto;
-            overscroll-behavior: contain;
+            overflow: visible;
             border: 1px solid #EBE2D3;
             border-radius: 16px;
             background: #FFFDF9;
         }
-        .schedule-canvas { position: relative; height: 2016px; min-width: 0; }
+        .schedule-canvas { position: relative; height: 720px; min-width: 0; }
         .schedule-lane {
             position: absolute;
             top: 0; bottom: 0; left: 58px; right: 8px;
             border-left: 1px solid #E5DACC;
-            background: repeating-linear-gradient(to bottom, transparent 0, transparent 27px, #F2EBE2 27px, #F2EBE2 28px);
+            background: repeating-linear-gradient(to bottom, transparent 0, transparent 9px, #F2EBE2 9px, #F2EBE2 10px);
         }
         .schedule-hour { position: absolute; left: 0; right: 0; height: 0; z-index: 1; pointer-events: none; }
         .schedule-hour::after { content: ''; position: absolute; left: 58px; right: 8px; border-top: 1px solid #DCD0BB; }
@@ -109,12 +106,14 @@
             font: 600 11px/16px 'Plus Jakarta Sans', sans-serif;
             color: #8E8070;
         }
+        .schedule-hour.is-first span { top: 1px; }
+        .schedule-hour.is-last span { top: -17px; }
         .schedule-event {
             position: absolute; left: 4px; right: 5px; z-index: 3;
             box-sizing: border-box; overflow: hidden;
             border: 1px solid #DBCDC0; border-left: 4px solid #B8502B;
-            border-radius: 10px; background: #FFFFFF;
-            padding: 3px 8px 10px 5px;
+            border-radius: 7px; background: #FFFFFF;
+            padding: 2px 6px 6px 4px;
             box-shadow: 0 3px 10px rgba(77, 58, 40, .10);
             transition: box-shadow 150ms, border-color 150ms;
             cursor: grab;
@@ -125,39 +124,52 @@
         .schedule-event:hover, .schedule-event:focus-visible { border-color: #B8502B; box-shadow: 0 5px 16px rgba(77, 58, 40, .16); outline: none; }
         .schedule-event.is-dragging { z-index: 20; opacity: .94; box-shadow: 0 16px 28px rgba(77, 58, 40, .24); transition: none; cursor: grabbing; }
         body.is-dragging-schedule { user-select: none; -webkit-user-select: none; }
-        .schedule-event-main { display: flex; align-items: center; gap: 7px; min-width: 0; height: 19px; }
-        .schedule-event-title { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-size: 12px; font-weight: 700; min-width: 0; flex: 1; }
-        .schedule-event-time { white-space: nowrap; color: #A74322; font: 700 10px/1.2 monospace; }
+        .schedule-event-main { display: flex; align-items: center; gap: 4px; min-width: 0; height: 17px; }
+        .schedule-event-title { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-size: 11px; font-weight: 700; min-width: 0; flex: 1; }
+        .schedule-event-time { white-space: nowrap; color: #A74322; font: 700 9px/1.2 monospace; }
         .schedule-event-note { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; color: #7C7369; font-size: 10px; margin-left: 28px; }
+        .schedule-event.is-compact { padding: 0 17px 0 4px; border-radius: 4px; box-shadow: none; }
+        .schedule-compact-title { font-size: 9px; line-height: 10px; font-weight: 700; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+        .schedule-event.is-compact .resize-handle { top: 0; bottom: 0; left: auto; right: 0; width: 14px; height: 100%; border-left: 1px solid #EBE2D3; }
+        .schedule-event.is-compact .resize-handle::after { width: 2px; height: 7px; }
         .grab-handle {
             display: inline-flex; align-items: center; justify-content: center;
-            width: 22px; height: 21px; flex: none; border-radius: 5px;
+            width: 18px; height: 17px; flex: none; border-radius: 5px;
             color: #9F8C78; cursor: grab; touch-action: none;
         }
         .grab-handle:hover { color: #B8502B; background: #F4EFE6; }
         .grab-handle:active { cursor: grabbing; }
         .resize-handle {
-            position: absolute; bottom: 0; left: 0; right: 0; height: 10px;
+            position: absolute; bottom: 0; left: 0; right: 0; height: 7px;
             display: flex; justify-content: center; align-items: center;
             cursor: ns-resize; touch-action: none;
         }
-        .resize-handle::after { content: ''; width: 36px; height: 3px; border-radius: 3px; background: #CBB7A4; }
+        .resize-handle::after { content: ''; width: 32px; height: 2px; border-radius: 3px; background: #CBB7A4; }
         .resize-handle:hover::after { background: #B8502B; }
         .schedule-transit {
             position: absolute; left: 4px; right: 5px; z-index: 2;
             box-sizing: border-box; overflow: hidden;
             border-left: 3px dashed rgba(197, 149, 75, .46);
             background: rgba(197, 149, 75, .085);
-            color: #907A5D; font-size: 10px; padding: 2px 8px;
+            color: #907A5D; font-size: 10px; padding: 0 6px;
+            display: flex; align-items: center;
             cursor: pointer;
         }
         .schedule-transit:hover { background: rgba(197, 149, 75, .17); }
+        .schedule-transit-label {
+            display: inline-block; max-width: 100%; overflow: hidden;
+            white-space: nowrap; text-overflow: ellipsis;
+            padding: 1px 5px; border-radius: 5px;
+            border: 1px solid #E9DCC9;
+            background: #F9F3E9; color: #78634D;
+            line-height: 12px;
+        }
         .schedule-drop-guide {
             position: absolute; left: 0; right: 0; z-index: 19;
             border-top: 2px dashed #B8502B; pointer-events: none;
         }
         .schedule-empty {
-            position: absolute; top: 340px; left: 14px; right: 14px; z-index: 2;
+            position: absolute; top: 130px; left: 14px; right: 14px; z-index: 2;
             padding: 16px; border: 1px dashed #CBB7A4; border-radius: 12px;
             color: #7C7369; text-align: center; font-size: 12px; background: rgba(255,255,255,.85);
         }
@@ -319,12 +331,12 @@
                 <div class="flex items-center gap-2.5 justify-between sm:justify-end w-full sm:w-auto">
                     <div class="flex items-center gap-2 bg-white px-3 py-1.5 rounded-xl border border-cream-300 shadow-sm flex-1 sm:flex-none justify-between sm:justify-start">
                         <label for="dayStartHourSelect" class="text-xs font-medium text-warm-textMuted flex items-center gap-1.5 whitespace-nowrap">
-                            <i class="fa-regular fa-clock text-warm-gold"></i>開始時刻:
+                            <i class="fa-regular fa-clock text-warm-gold"></i>目盛り開始:
                         </label>
                         <div class="flex items-center gap-0.5 font-mono font-bold text-xs text-warm-textDark">
-                            <select id="dayStartHourSelect" aria-label="一日の開始時" onchange="updateDayStartTimeFromParts()" class="w-[48px] bg-transparent border-b border-cream-300 text-center focus:outline-none focus:border-warm-accent cursor-pointer"></select>
+                            <select id="dayStartHourSelect" aria-label="目盛りの開始時" onchange="updateScheduleStartTimeFromParts()" class="w-[48px] bg-transparent border-b border-cream-300 text-center focus:outline-none focus:border-warm-accent cursor-pointer"></select>
                             <span>:</span>
-                            <select id="dayStartMinuteSelect" aria-label="一日の開始分" onchange="updateDayStartTimeFromParts()" class="w-[48px] bg-transparent border-b border-cream-300 text-center focus:outline-none focus:border-warm-accent cursor-pointer"></select>
+                            <select id="dayStartMinuteSelect" aria-label="目盛りの開始分" onchange="updateScheduleStartTimeFromParts()" class="w-[48px] bg-transparent border-b border-cream-300 text-center focus:outline-none focus:border-warm-accent cursor-pointer"></select>
                         </div>
                     </div>
 
@@ -396,7 +408,6 @@
             <div class="mt-4 relative">
                 <div class="flex items-center justify-between gap-2 text-[11px] text-warm-textMuted px-1">
                     <span><i class="fa-solid fa-grip-vertical text-warm-accent mr-1"></i>予定をドラッグして移動、下端をドラッグして長さを変更。押すと詳細を編集できます。</span>
-                    <span class="font-mono shrink-0">6:00–24:00 · 15分刻み</span>
                 </div>
                 <div id="scheduleViewport" class="schedule-viewport mt-2">
                     <div id="timelineContainer" class="schedule-canvas">
@@ -518,6 +529,7 @@
         const DEFAULT_ITINERARY = [
             {
                 dayNumber: 1,
+                timelineStartTime: '06:00',
                 startTime: '09:00',
                 items: [
                     { id: 'hk_17', name: 'ヒルサイド・エスカレーター', duration: 45, transitAfter: 30, transitNotes: '徒歩（SOHOエリア）', notes: '中環周辺を散策', category: 'Landmark', startTime: '09:00', endTime: '09:45' },
@@ -527,6 +539,7 @@
             },
             {
                 dayNumber: 2,
+                timelineStartTime: '06:00',
                 startTime: '09:30',
                 items: [
                     { id: 'hk_05', name: '香港ディズニーランド', duration: 480, transitAfter: 30, transitNotes: 'MTRディズニーランドリゾート線', notes: 'アナ雪エリアを中心に満喫', category: 'ThemePark', startTime: '09:30', endTime: '17:30' }
@@ -678,7 +691,7 @@
                                 return JSON.parse(JSON.stringify(DEFAULT_ITINERARY[index]));
                             }
                             if (index >= 2 && isUntouchedAddedMealDay(day)) {
-                                return { dayNumber: day.dayNumber, startTime: '09:00', items: [] };
+                                return { dayNumber: day.dayNumber, timelineStartTime: '06:00', startTime: '09:00', items: [] };
                             }
                             return day;
                         });
@@ -697,7 +710,7 @@
             if (!itineraryData[activeDayIndex]) return;
             closeEventEditor();
             const initialDay = DEFAULT_ITINERARY[activeDayIndex] || {
-                dayNumber: activeDayIndex + 1, startTime: '09:00', items: []
+                dayNumber: activeDayIndex + 1, timelineStartTime: '06:00', startTime: '09:00', items: []
             };
             itineraryData[activeDayIndex] = JSON.parse(JSON.stringify(initialDay));
             renderDayTabs();
@@ -815,7 +828,7 @@
             }).join('');
 
             document.getElementById('currentDayTitle').innerText = `Day ${itineraryData[activeDayIndex].dayNumber} タイムライン`;
-            const startTime = itineraryData[activeDayIndex].startTime || '09:00';
+            const startTime = itineraryData[activeDayIndex].timelineStartTime || '06:00';
             const [hour, minute] = startTime.split(':');
             document.getElementById('dayStartHourSelect').innerHTML = renderHourOptions(hour);
             document.getElementById('dayStartMinuteSelect').innerHTML = renderMinuteOptions(minute);
@@ -847,16 +860,21 @@
             ).join('') + `<option value="OVERNIGHT" ${duration === 'OVERNIGHT' ? 'selected' : ''}>🌙 翌朝まで</option>`;
         }
 
-        const SCHEDULE_START = 6 * 60;
+        const DEFAULT_SCHEDULE_START = 6 * 60;
         const SCHEDULE_END = 24 * 60;
         const SCHEDULE_SLOT_MINUTES = 15;
-        const SCHEDULE_SLOT_HEIGHT = 28;
+        const SCHEDULE_SLOT_HEIGHT = 10;
         let scheduleGesture = null;
         let suppressEventClick = false;
         let editingItemIndex = null;
 
+        function getScheduleStartMinutes(day = itineraryData[activeDayIndex]) {
+            const value = day?.timelineStartTime || '06:00';
+            return isValidClockTime(value) ? timeToMinutes(value) : DEFAULT_SCHEDULE_START;
+        }
+
         function gridY(minutes) {
-            return (minutes - SCHEDULE_START) / SCHEDULE_SLOT_MINUTES * SCHEDULE_SLOT_HEIGHT;
+            return (minutes - getScheduleStartMinutes()) / SCHEDULE_SLOT_MINUTES * SCHEDULE_SLOT_HEIGHT;
         }
 
         function gridTime(minutes) {
@@ -882,35 +900,39 @@
         function renderTimeline() {
             const day = itineraryData[activeDayIndex];
             const container = document.getElementById('timelineContainer');
-            const viewport = document.getElementById('scheduleViewport');
-            const oldScroll = viewport.scrollTop;
+            const axisStart = getScheduleStartMinutes(day);
+            container.style.height = `${gridY(SCHEDULE_END)}px`;
             const intervals = getTimelineIntervals(day);
-            const hourLines = Array.from({ length: 19 }, (_, index) => {
-                const minute = SCHEDULE_START + index * 60;
-                return `<div class="schedule-hour" style="top:${gridY(minute)}px"><span>${gridTime(minute)}</span></div>`;
-            }).join('');
+            const markers = [axisStart];
+            for (let minute = Math.floor(axisStart / 60) * 60 + 60; minute <= SCHEDULE_END; minute += 60) {
+                markers.push(minute);
+            }
+            const hourLines = markers.map((minute, index) =>
+                `<div class="schedule-hour ${index === 0 ? 'is-first' : ''} ${minute === SCHEDULE_END ? 'is-last' : ''}" style="top:${gridY(minute)}px"><span>${gridTime(minute)}</span></div>`
+            ).join('');
             let blocks = '';
             let hasHiddenEntries = false;
 
             intervals.forEach(({ item, start, end }, index) => {
-                const top = Math.max(start, SCHEDULE_START);
+                const top = Math.max(start, axisStart);
                 const bottom = Math.min(end, SCHEDULE_END);
                 if (bottom > top) {
-                    if (start < SCHEDULE_START || end > SCHEDULE_END) hasHiddenEntries = true;
+                    if (start < axisStart || end > SCHEDULE_END) hasHiddenEntries = true;
                     const height = gridY(bottom) - gridY(top);
                     const category = getCategoryStyle(item.category);
                     const range = `${gridTime(start)}–${item.duration === 'OVERNIGHT' ? '翌朝' : gridTime(end)}`;
-                    blocks += `<div class="schedule-event" data-index="${index}"
+                    const compact = height < 30;
+                    blocks += `<div class="schedule-event ${compact ? 'is-compact' : ''}" data-index="${index}"
                         style="top:${gridY(top)}px;height:${height}px;border-left-color:${item.category === 'Food' ? '#C5954B' : item.category === 'Hotel' ? '#7F6D50' : '#B8502B'}"
-                        role="button" tabindex="0" aria-label="${escapeHtml(item.name)} ${escapeHtml(range)}、詳細を編集"
+                        role="button" tabindex="0" title="${escapeHtml(item.name)} ${escapeHtml(range)}" aria-label="${escapeHtml(item.name)} ${escapeHtml(range)}、詳細を編集"
                         onpointerdown="beginScheduleGesture(event, ${index}, 'move')"
                         onclick="if (!suppressEventClick) openEventEditor(${index})"
                         onkeydown="if (event.target === this && (event.key === 'Enter' || event.key === ' ')) {event.preventDefault(); openEventEditor(${index})}">
-                        <div class="schedule-event-main">
+                        ${compact ? `<div class="schedule-compact-title">${escapeHtml(item.name)}</div><span class="schedule-event-time" hidden>${escapeHtml(range)}</span>` : `<div class="schedule-event-main">
                             <button type="button" class="grab-handle" title="ドラッグで開始時刻を変更" aria-label="${escapeHtml(item.name)}を移動" onpointerdown="beginScheduleGesture(event, ${index}, 'move')" onkeydown="handleScheduleKey(event, ${index}, 'move')" onclick="event.stopPropagation()"><i class="fa-solid fa-grip-vertical"></i></button>
                             <span class="schedule-event-title"><i class="fa-solid ${category.icon} text-[10px] text-warm-gold mr-1"></i>${escapeHtml(item.name)}</span>
                             <span class="schedule-event-time">${escapeHtml(range)}</span>
-                        </div>
+                        </div>`}
                         ${height >= 56 && item.notes ? `<div class="schedule-event-note">${escapeHtml(item.notes)}</div>` : ''}
                         ${item.duration !== 'OVERNIGHT' ? `<button type="button" class="resize-handle" title="ドラッグで滞在時間を変更" aria-label="${escapeHtml(item.name)}の滞在時間を変更" onpointerdown="beginScheduleGesture(event, ${index}, 'resize')" onkeydown="handleScheduleKey(event, ${index}, 'resize')" onclick="event.stopPropagation()"></button>` : ''}
                     </div>`;
@@ -919,14 +941,14 @@
                 }
 
                 const next = intervals[index + 1];
-                if (next && end < next.start && end < SCHEDULE_END && next.start > SCHEDULE_START) {
-                    const bandStart = Math.max(end, SCHEDULE_START);
+                if (next && end < next.start && end < SCHEDULE_END && next.start > axisStart) {
+                    const bandStart = Math.max(end, axisStart);
                     const bandEnd = Math.min(next.start, SCHEDULE_END);
                     const bandHeight = gridY(bandEnd) - gridY(bandStart);
                     if (bandHeight > 0) {
                         blocks += `<div class="schedule-transit" style="top:${gridY(bandStart)}px;height:${bandHeight}px" role="button" tabindex="0" title="移動時間を編集"
                             onclick="openEventEditor(${index})" onkeydown="if(event.key === 'Enter' || event.key === ' ') {event.preventDefault();openEventEditor(${index})}">
-                            ${bandHeight >= 18 ? `<i class="fa-solid fa-person-walking mr-1"></i>移動 ${Number(item.transitAfter ?? 30)}分${item.transitNotes ? ` · ${escapeHtml(item.transitNotes)}` : ''}` : ''}
+                            ${bandHeight >= 18 ? `<span class="schedule-transit-label"><i class="fa-solid fa-person-walking mr-1"></i>移動 ${Number(item.transitAfter ?? 30)}分${item.transitNotes ? ` · ${escapeHtml(item.transitNotes)}` : ''}</span>` : ''}
                         </div>`;
                     }
                 }
@@ -936,8 +958,9 @@
                 blocks = `<div class="schedule-empty">まだ予定がありません。上の入力欄、または下の「定番予定」「香港の有名観光地」から追加できます。</div>`;
             }
             container.innerHTML = `${hourLines}<div class="schedule-lane">${blocks}<div class="schedule-drop-guide" hidden></div></div>`;
-            document.getElementById('scheduleOverflowNotice').hidden = !hasHiddenEntries;
-            viewport.scrollTop = oldScroll;
+            const overflowNotice = document.getElementById('scheduleOverflowNotice');
+            overflowNotice.hidden = !hasHiddenEntries;
+            overflowNotice.textContent = `${gridTime(axisStart)}より前・24:00以降の予定は時間軸の外にあります。目盛り開始を早めるか、予定の詳細から時刻を調整してください。`;
             updateSummaryBar();
             const editor = document.getElementById('eventEditor');
             if (editor.open) renderEventEditor();
@@ -1012,15 +1035,15 @@
             // handles have their own pointer and click behavior.
             if (event.currentTarget !== event.currentTarget.closest('.schedule-event')) event.preventDefault();
             event.stopPropagation();
-            const viewport = document.getElementById('scheduleViewport');
             const lane = document.querySelector('#timelineContainer .schedule-lane');
             const card = event.currentTarget.closest('.schedule-event');
             const interval = getTimelineIntervals(itineraryData[activeDayIndex])[index];
             if (!card || !interval || !lane) return;
             scheduleGesture = {
-                pointerId: event.pointerId, handle: event.currentTarget, card, lane, viewport,
+                pointerId: event.pointerId, handle: event.currentTarget, card, lane,
                 mode, index, interval, startY: event.clientY, clientY: event.clientY,
-                startScroll: viewport.scrollTop, value: mode === 'move' ? interval.start : Number(interval.item.duration),
+                startPageScroll: Number(window.scrollY) || 0,
+                value: mode === 'move' ? interval.start : Number(interval.item.duration),
                 moved: false, frame: null
             };
             event.currentTarget.setPointerCapture(event.pointerId);
@@ -1035,7 +1058,7 @@
             if (!gesture || event.pointerId !== gesture.pointerId) return;
             event.preventDefault();
             gesture.clientY = event.clientY;
-            if (Math.abs(event.clientY - gesture.startY) >= 4) {
+            if (Math.abs(event.clientY - gesture.startY) >= 6) {
                 gesture.moved = true;
                 document.body.classList.add('is-dragging-schedule');
             }
@@ -1045,14 +1068,14 @@
         function updateScheduleGesturePreview() {
             const gesture = scheduleGesture;
             if (!gesture || !gesture.moved) return;
-            const delta = gesture.clientY - gesture.startY + gesture.viewport.scrollTop - gesture.startScroll;
+            const delta = gesture.clientY - gesture.startY + (Number(window.scrollY) || 0) - gesture.startPageScroll;
             const slots = Math.round(delta / SCHEDULE_SLOT_HEIGHT);
             const guide = gesture.lane.querySelector('.schedule-drop-guide');
             gesture.card.classList.add('is-dragging');
             if (gesture.mode === 'move') {
                 const duration = gesture.interval.item.duration === 'OVERNIGHT' ? 15 : Number(gesture.interval.item.duration);
                 const maxStart = Math.floor((SCHEDULE_END - duration) / SCHEDULE_SLOT_MINUTES) * SCHEDULE_SLOT_MINUTES;
-                gesture.value = Math.max(SCHEDULE_START, Math.min(maxStart,
+                gesture.value = Math.max(getScheduleStartMinutes(), Math.min(maxStart,
                     Math.round(gesture.interval.start / SCHEDULE_SLOT_MINUTES) * SCHEDULE_SLOT_MINUTES + slots * SCHEDULE_SLOT_MINUTES));
                 const otherEntries = getTimelineIntervals(itineraryData[activeDayIndex]).filter((_, i) => i !== gesture.index);
                 let insertAt = gesture.interval.item.duration === 'OVERNIGHT' ? otherEntries.length :
@@ -1071,7 +1094,7 @@
                     Math.floor((SCHEDULE_END - gesture.interval.start) / SCHEDULE_SLOT_MINUTES) * SCHEDULE_SLOT_MINUTES);
                 gesture.value = Math.max(15, Math.min(maxDuration,
                     Math.round(Number(gesture.interval.item.duration) / SCHEDULE_SLOT_MINUTES) * SCHEDULE_SLOT_MINUTES + slots * SCHEDULE_SLOT_MINUTES));
-                gesture.card.style.height = `${gridY(gesture.value + SCHEDULE_START)}px`;
+                gesture.card.style.height = `${gesture.value / SCHEDULE_SLOT_MINUTES * SCHEDULE_SLOT_HEIGHT}px`;
                 gesture.card.querySelector('.schedule-event-time').textContent = `${gridTime(gesture.interval.start)}–${gridTime(gesture.interval.start + gesture.value)}`;
                 guide.style.top = `${gridY(gesture.interval.start + gesture.value)}px`;
             }
@@ -1082,9 +1105,11 @@
             const gesture = scheduleGesture;
             if (!gesture) return;
             if (gesture.moved) {
-                const rect = gesture.viewport.getBoundingClientRect();
-                if (gesture.clientY < rect.top + 48) gesture.viewport.scrollTop -= 12;
-                else if (gesture.clientY > rect.bottom - 48) gesture.viewport.scrollTop += 12;
+                const height = Number(window.innerHeight) || 0;
+                if (height && typeof window.scrollBy === 'function') {
+                    if (gesture.clientY < 48) window.scrollBy(0, -12);
+                    else if (gesture.clientY > height - 48) window.scrollBy(0, 12);
+                }
                 updateScheduleGesturePreview();
             }
             gesture.frame = requestAnimationFrame(autoScrollScheduleGesture);
@@ -1132,7 +1157,7 @@
             if (!moved) return;
             const duration = moved.item.duration === 'OVERNIGHT' ? 15 : Number(moved.item.duration);
             const maxStart = Math.floor((SCHEDULE_END - duration) / SCHEDULE_SLOT_MINUTES) * SCHEDULE_SLOT_MINUTES;
-            const target = Math.max(SCHEDULE_START, Math.min(maxStart,
+            const target = Math.max(getScheduleStartMinutes(), Math.min(maxStart,
                 Math.round(targetMinute / SCHEDULE_SLOT_MINUTES) * SCHEDULE_SLOT_MINUTES));
             const remaining = positions.filter((_, i) => i !== index);
             const beforeRemoval = positions[index - 1];
@@ -1145,7 +1170,7 @@
             if (insertAt < 0) insertAt = remaining.length;
             const previous = remaining[insertAt - 1];
             const following = remaining[insertAt];
-            const available = previous ? previous.end : SCHEDULE_START;
+            const available = previous ? previous.end : getScheduleStartMinutes();
             const actual = Math.max(target, Math.ceil(available / SCHEDULE_SLOT_MINUTES) * SCHEDULE_SLOT_MINUTES);
             if (actual + duration > SCHEDULE_END) {
                 window.alert('24:00を超える位置には置けません。');
@@ -1525,16 +1550,17 @@
             recalculateTimes();
         }
 
-        function updateDayStartTime(newTime) {
-            if (!newTime) return;
-            itineraryData[activeDayIndex].startTime = newTime;
-            recalculateTimes();
+        function updateScheduleStartTime(newTime) {
+            if (!isValidClockTime(newTime)) return;
+            itineraryData[activeDayIndex].timelineStartTime = newTime;
+            renderTimeline();
+            autoSaveToLocalStorage();
         }
 
-        function updateDayStartTimeFromParts() {
+        function updateScheduleStartTimeFromParts() {
             const hour = document.getElementById('dayStartHourSelect').value;
             const minute = document.getElementById('dayStartMinuteSelect').value;
-            updateDayStartTime(`${hour}:${minute}`);
+            updateScheduleStartTime(`${hour}:${minute}`);
             renderDayTabs();
         }
 
@@ -1548,7 +1574,7 @@
         function addNewDay() {
             closeEventEditor();
             const nextNum = itineraryData.length + 1;
-            itineraryData.push({ dayNumber: nextNum, startTime: '09:00', items: [] });
+            itineraryData.push({ dayNumber: nextNum, timelineStartTime: '06:00', startTime: '09:00', items: [] });
             activeDayIndex = itineraryData.length - 1;
             renderDayTabs();
             recalculateTimes();
