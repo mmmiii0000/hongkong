@@ -277,12 +277,14 @@
 
                 <div class="flex items-center gap-2.5 justify-between sm:justify-end w-full sm:w-auto">
                     <div class="flex items-center gap-2 bg-white px-3 py-1.5 rounded-xl border border-cream-300 shadow-sm flex-1 sm:flex-none justify-between sm:justify-start">
-                        <label for="dayStartTimeSelect" class="text-xs font-medium text-warm-textMuted flex items-center gap-1.5 whitespace-nowrap">
+                        <label for="dayStartHourSelect" class="text-xs font-medium text-warm-textMuted flex items-center gap-1.5 whitespace-nowrap">
                             <i class="fa-regular fa-clock text-warm-gold"></i>開始時刻:
                         </label>
-                        <select id="dayStartTimeSelect" onchange="updateDayStartTime(this.value)"
-                            class="bg-transparent text-xs text-warm-textDark font-mono font-bold focus:outline-none cursor-pointer">
-                        </select>
+                        <div class="flex items-center gap-0.5 font-mono font-bold text-xs text-warm-textDark">
+                            <select id="dayStartHourSelect" aria-label="一日の開始時" onchange="updateDayStartTimeFromParts()" class="w-[48px] bg-transparent border-b border-cream-300 text-center focus:outline-none focus:border-warm-accent cursor-pointer"></select>
+                            <span>:</span>
+                            <select id="dayStartMinuteSelect" aria-label="一日の開始分" onchange="updateDayStartTimeFromParts()" class="w-[48px] bg-transparent border-b border-cream-300 text-center focus:outline-none focus:border-warm-accent cursor-pointer"></select>
+                        </div>
                     </div>
 
                     <button onclick="clearCurrentDay()" title="この日の予定を全削除" class="px-3 py-1.5 text-xs text-warm-textMuted hover:text-rose-600 bg-white hover:bg-rose-50 border border-cream-300 rounded-xl transition flex items-center gap-1 shrink-0 active:scale-95">
@@ -356,11 +358,35 @@
                         <i class="fa-solid fa-route text-base"></i>
                     </div>
                     <p class="text-xs font-semibold text-warm-textDark">まだ予定が入っていません</p>
-                    <p class="text-[10px] sm:text-[11px] text-warm-textMuted mt-0.5">上の入力欄か「香港の有名観光地」から「+ 追加」を押してください</p>
+                    <p class="text-[10px] sm:text-[11px] text-warm-textMuted mt-0.5">上の入力欄、または下の「定番予定」「香港の有名観光地」から追加してください</p>
                 </div>
 
                 <div id="timelineContainer" class="space-y-2 min-h-[100px]">
                 </div>
+            </div>
+        </section>
+
+        <section class="bg-cream-100/70 border border-cream-200 rounded-2xl p-3.5 sm:p-6 shadow-sm">
+            <h2 class="text-base font-bold text-warm-textDark flex items-center gap-2 mb-3.5">
+                <i class="fa-regular fa-calendar-plus text-warm-gold"></i>定番予定
+            </h2>
+            <div class="grid grid-cols-2 sm:grid-cols-4 gap-2.5">
+                <button onclick="addCommonPlan('breakfast')" class="bg-white hover:border-warm-accent border border-cream-200 rounded-xl p-3 text-left shadow-sm transition active:scale-95">
+                    <span class="block text-xs font-bold text-warm-textDark"><i class="fa-solid fa-mug-hot text-warm-gold mr-1.5"></i>朝食</span>
+                    <span class="block text-[10px] text-warm-textMuted mt-1">9:00目安 · 45分</span>
+                </button>
+                <button onclick="addCommonPlan('lunch')" class="bg-white hover:border-warm-accent border border-cream-200 rounded-xl p-3 text-left shadow-sm transition active:scale-95">
+                    <span class="block text-xs font-bold text-warm-textDark"><i class="fa-solid fa-utensils text-warm-gold mr-1.5"></i>ランチ</span>
+                    <span class="block text-[10px] text-warm-textMuted mt-1">12:00目安 · 1時間</span>
+                </button>
+                <button onclick="addCommonPlan('dinner')" class="bg-white hover:border-warm-accent border border-cream-200 rounded-xl p-3 text-left shadow-sm transition active:scale-95">
+                    <span class="block text-xs font-bold text-warm-textDark"><i class="fa-solid fa-utensils text-warm-gold mr-1.5"></i>ディナー</span>
+                    <span class="block text-[10px] text-warm-textMuted mt-1">19:00目安 · 1時間</span>
+                </button>
+                <button onclick="addCommonPlan('hotel')" class="bg-white hover:border-warm-accent border border-cream-200 rounded-xl p-3 text-left shadow-sm transition active:scale-95">
+                    <span class="block text-xs font-bold text-warm-textDark"><i class="fa-solid fa-hotel text-warm-gold mr-1.5"></i>ホテル</span>
+                    <span class="block text-[10px] text-warm-textMuted mt-1">翌朝まで · 追加する</span>
+                </button>
             </div>
         </section>
 
@@ -438,50 +464,28 @@
             { id: 'hk_30', name: '大浪湾 (Big Wave Bay)', category: 'Nature', catName: '絶景・自然', duration: 180, desc: '自然豊かなサーフィンスポットとしても有名な美しいビーチ。' }
         ];
 
-        function makeMeal(name, startTime, duration, transitAfter = 0) {
-            return {
-                id: `meal_${name}`, name, duration,
-                transitAfter, transitNotes: '', notes: '', category: 'Food',
-                startTime,
-                endTime: minutesToTime(timeToMinutes(startTime) + duration)
-            };
-        }
-
-        function makeMealDay(dayNumber) {
-            return {
-                dayNumber,
-                startTime: '09:00',
-                items: [
-                    makeMeal('朝食', '09:00', 45, 135),
-                    makeMeal('ランチ', '12:00', 60, 300),
-                    makeMeal('ディナー', '18:00', 60)
-                ]
-            };
-        }
+        const COMMON_PLANS = {
+            breakfast: { name: '朝食', duration: 45, category: 'Food', preferredStartTime: '09:00' },
+            lunch: { name: 'ランチ', duration: 60, category: 'Food', preferredStartTime: '12:00' },
+            dinner: { name: 'ディナー', duration: 60, category: 'Food', preferredStartTime: '19:00' },
+            hotel: { name: 'ホテル', duration: 'OVERNIGHT', category: 'Hotel' }
+        };
 
         const DEFAULT_ITINERARY = [
             {
                 dayNumber: 1,
-                startTime: '08:15',
+                startTime: '09:00',
                 items: [
-                    makeMeal('朝食', '08:15', 45),
                     { id: 'hk_17', name: 'ヒルサイド・エスカレーター', duration: 45, transitAfter: 30, transitNotes: '徒歩（SOHOエリア）', notes: '中環周辺を散策', category: 'Landmark', startTime: '09:00', endTime: '09:45' },
-                    { id: 'hk_08', name: '文武廟 (マンモーテンプル)', duration: 45, transitAfter: 60, transitNotes: 'ランチまでの移動・空き時間', notes: '参拝・写真撮影', category: 'Culture', startTime: '10:15', endTime: '11:00' },
-                    makeMeal('ランチ', '12:00', 60),
-                    { id: 'hk_01', name: 'ビクトリア・ピーク (太平山)', duration: 120, transitAfter: 180, transitNotes: 'ディナーまでの移動・空き時間', notes: 'ピークトラムに乗車', category: 'Landmark', startTime: '13:00', endTime: '15:00' },
-                    makeMeal('ディナー', '18:00', 60, 180),
-                    { id: 'hk_hotel_1', name: 'ホテル宿泊 (中環エリア)', duration: 'OVERNIGHT', transitAfter: 0, transitNotes: '', notes: 'ゆっくり就寝', category: 'Hotel', startTime: '22:00', endTime: '翌朝' }
+                    { id: 'hk_08', name: '文武廟 (マンモーテンプル)', duration: 45, transitAfter: 20, transitNotes: 'ピークトラム山頂駅まで移動', notes: '参拝・写真撮影', category: 'Culture', startTime: '10:15', endTime: '11:00' },
+                    { id: 'hk_01', name: 'ビクトリア・ピーク (太平山)', duration: 120, transitAfter: 30, transitNotes: '', notes: 'ピークトラムに乗車', category: 'Landmark', startTime: '11:20', endTime: '13:20' }
                 ]
             },
             {
                 dayNumber: 2,
-                startTime: '08:45',
+                startTime: '09:30',
                 items: [
-                    makeMeal('朝食', '08:45', 45),
-                    { id: 'hk_05_am', name: '香港ディズニーランド（午前）', duration: 180, transitAfter: 0, transitNotes: '', notes: 'アナ雪エリアを中心に満喫', category: 'ThemePark', startTime: '09:30', endTime: '12:30' },
-                    makeMeal('ランチ', '12:30', 60),
-                    { id: 'hk_05_pm', name: '香港ディズニーランド（午後）', duration: 300, transitAfter: 30, transitNotes: '夕食場所へ', notes: 'パークを引き続き満喫', category: 'ThemePark', startTime: '13:30', endTime: '18:30' },
-                    makeMeal('ディナー', '19:00', 60)
+                    { id: 'hk_05', name: '香港ディズニーランド', duration: 480, transitAfter: 30, transitNotes: 'MTRディズニーランドリゾート線', notes: 'アナ雪エリアを中心に満喫', category: 'ThemePark', startTime: '09:30', endTime: '17:30' }
                 ]
             }
         ];
@@ -509,6 +513,61 @@
                     return item.id === id && item.name === name && item.duration === duration &&
                         item.transitAfter === transitAfter && item.transitNotes === transitNotes &&
                         item.notes === notes && item.category === category;
+                });
+        }
+
+        function isUntouchedPreviousDayOne(day) {
+            const expected = [
+                ['meal_朝食', '朝食', 45, 0],
+                ['hk_17', 'ヒルサイド・エスカレーター', 45, 30],
+                ['hk_08', '文武廟 (マンモーテンプル)', 45, 60],
+                ['meal_ランチ', 'ランチ', 60, 0],
+                ['hk_01', 'ビクトリア・ピーク (太平山)', 120, 180],
+                ['meal_ディナー', 'ディナー', 60, 180],
+                ['hk_hotel_1', 'ホテル宿泊 (中環エリア)', 'OVERNIGHT', 0]
+            ];
+            return day.startTime === '08:15' && Array.isArray(day.items) &&
+                day.items.length === expected.length && day.items.every((item, index) => {
+                    const [id, name, duration, transitAfter] = expected[index];
+                    return item.id === id && item.name === name && item.duration === duration &&
+                        item.transitAfter === transitAfter &&
+                        item.category === ['Food', 'Landmark', 'Culture', 'Food', 'Landmark', 'Food', 'Hotel'][index] &&
+                        item.notes === ['', '中環周辺を散策', '参拝・写真撮影', '', 'ピークトラムに乗車', '', 'ゆっくり就寝'][index] &&
+                        item.transitNotes === ['', '徒歩（SOHOエリア）', '徒歩でランチへ', '', 'ディナーまでの移動・空き時間', '', ''][index];
+                });
+        }
+
+        function isUntouchedPreviousDayTwo(day) {
+            const expected = [
+                ['meal_朝食', '朝食', 45, 0, '', ''],
+                ['hk_05_am', '香港ディズニーランド（午前）', 180, 0, 'アナ雪エリアを中心に満喫', ''],
+                ['meal_ランチ', 'ランチ', 60, 0, '', ''],
+                ['hk_05_pm', '香港ディズニーランド（午後）', 300, 30, 'パークを引き続き満喫', '夕食場所へ'],
+                ['meal_ディナー', 'ディナー', 60, 0, '', '']
+            ];
+            return day.startTime === '08:45' && Array.isArray(day.items) &&
+                day.items.length === expected.length && day.items.every((item, index) => {
+                    const [id, name, duration, transitAfter, notes, transitNotes] = expected[index];
+                    return item.id === id && item.name === name && item.duration === duration &&
+                        item.transitAfter === transitAfter && item.notes === notes &&
+                        item.category === ['Food', 'ThemePark', 'Food', 'ThemePark', 'Food'][index] &&
+                        item.transitNotes === transitNotes;
+                });
+        }
+
+        function isUntouchedAddedMealDay(day) {
+            const expected = [
+                ['meal_朝食', '朝食', 45, 135],
+                ['meal_ランチ', 'ランチ', 60, 300],
+                ['meal_ディナー', 'ディナー', 60, 0]
+            ];
+            return day.startTime === '09:00' && Array.isArray(day.items) &&
+                day.items.length === expected.length && day.items.every((item, index) => {
+                    const [id, name, duration, transitAfter] = expected[index];
+                    return item.id === id && item.name === name && item.duration === duration &&
+                        (item.transitAfter === transitAfter ||
+                            (item.preferredStartTime && item.transitAfter === 0)) &&
+                        item.notes === '' && item.transitNotes === '' && item.category === 'Food';
                 });
         }
 
@@ -569,11 +628,17 @@
                                 item.duration = 45;
                             }
                         }));
-                        itineraryData = itineraryData.map((day, index) =>
-                            isUntouchedLegacyDay(day, index)
-                                ? JSON.parse(JSON.stringify(DEFAULT_ITINERARY[index]))
-                                : day
-                        );
+                        itineraryData = itineraryData.map((day, index) => {
+                            if (isUntouchedLegacyDay(day, index) ||
+                                (index === 0 && isUntouchedPreviousDayOne(day)) ||
+                                (index === 1 && isUntouchedPreviousDayTwo(day))) {
+                                return JSON.parse(JSON.stringify(DEFAULT_ITINERARY[index]));
+                            }
+                            if (index >= 2 && isUntouchedAddedMealDay(day)) {
+                                return { dayNumber: day.dayNumber, startTime: '09:00', items: [] };
+                            }
+                            return day;
+                        });
                         itineraryData.forEach(convertSavedTimeAnchors);
                         activeDayIndex = Math.min(parsed.activeDayIndex || 0, itineraryData.length - 1);
                         return true;
@@ -587,7 +652,9 @@
 
         function resetCurrentDay() {
             if (!itineraryData[activeDayIndex]) return;
-            const initialDay = DEFAULT_ITINERARY[activeDayIndex] || makeMealDay(activeDayIndex + 1);
+            const initialDay = DEFAULT_ITINERARY[activeDayIndex] || {
+                dayNumber: activeDayIndex + 1, startTime: '09:00', items: []
+            };
             itineraryData[activeDayIndex] = JSON.parse(JSON.stringify(initialDay));
             renderDayTabs();
             recalculateTimes();
@@ -620,19 +687,33 @@
             }
         }
 
-        function populate15MinTimeOptions() {
-            const select = document.getElementById('dayStartTimeSelect');
-            select.innerHTML = '';
+        function renderHourOptions(selected) {
+            return Array.from({ length: 24 }, (_, hour) => {
+                const value = String(hour).padStart(2, '0');
+                return `<option value="${value}" ${value === selected ? 'selected' : ''}>${value}</option>`;
+            }).join('');
+        }
 
-            for (let h = 0; h < 24; h++) {
-                for (let m = 0; m < 60; m += 15) {
-                    const timeStr = `${String(h).padStart(2, '0')}:${String(m).padStart(2, '0')}`;
-                    const opt = document.createElement('option');
-                    opt.value = timeStr;
-                    opt.innerText = timeStr;
-                    select.appendChild(opt);
-                }
-            }
+        function renderMinuteOptions(selected) {
+            const choices = ['00', '15', '30', '45'];
+            // Display an existing nonstandard minute without changing saved
+            // plans. Every newly selectable minute remains a quarter hour.
+            const savedOption = choices.includes(selected) ? '' :
+                `<option value="${selected}" selected disabled>${selected}</option>`;
+            return savedOption + choices.map(value =>
+                `<option value="${value}" ${value === selected ? 'selected' : ''}>${value}</option>`
+            ).join('');
+        }
+
+        function renderClockPicker(time, label, index, part) {
+            if (time === '翌朝') return `<span class="timeline-time-${part}">翌朝</span>`;
+            const [hour, minute] = time.split(':');
+            const selectClass = 'w-[48px] bg-white border border-cream-300 rounded text-center font-mono text-xs font-bold text-warm-accent focus:outline-none focus:border-warm-accent cursor-pointer';
+            return `<span class="timeline-time-${part} inline-flex items-center gap-0.5">
+                <select aria-label="${label}の時" title="${label}の時を選択" class="clock-hour ${selectClass}" onchange="updateTimelineClock(${index}, '${part}', this)" onclick="event.stopPropagation()">${renderHourOptions(hour)}</select>
+                <span>:</span>
+                <select aria-label="${label}の分" title="${label}の分を選択" class="clock-minute ${selectClass}" onchange="updateTimelineClock(${index}, '${part}', this)" onclick="event.stopPropagation()">${renderMinuteOptions(minute)}</select>
+            </span>`;
         }
 
         function recalculateTimes(renderCards = true) {
@@ -694,15 +775,10 @@
             }).join('');
 
             document.getElementById('currentDayTitle').innerText = `Day ${itineraryData[activeDayIndex].dayNumber} タイムライン`;
-            const startSelect = document.getElementById('dayStartTimeSelect');
             const startTime = itineraryData[activeDayIndex].startTime || '09:00';
-            if (!Array.from(startSelect.options).some(option => option.value === startTime)) {
-                const option = document.createElement('option');
-                option.value = startTime;
-                option.textContent = startTime;
-                startSelect.appendChild(option);
-            }
-            startSelect.value = startTime;
+            const [hour, minute] = startTime.split(':');
+            document.getElementById('dayStartHourSelect').innerHTML = renderHourOptions(hour);
+            document.getElementById('dayStartMinuteSelect').innerHTML = renderMinuteOptions(minute);
         }
 
         // Short stays: 15-minute increments through 60 minutes, then 90 minutes;
@@ -748,8 +824,6 @@
             let htmlContent = '';
 
             activeDay.items.forEach((item, index) => {
-                const isOvernight = item.duration === 'OVERNIGHT';
-
                 htmlContent += `
                     <div data-index="${index}" class="timeline-entry group">
                     <div class="timeline-item bg-white rounded-xl p-3 sm:p-3.5 border border-cream-200 hover:border-warm-accent/50 flex flex-col sm:flex-row items-start sm:items-center justify-between gap-2.5 shadow-sm">
@@ -761,13 +835,9 @@
                                 </div>
 
                                 <div class="flex items-center gap-1 font-mono text-xs font-bold text-warm-accent bg-cream-50 px-2 py-1 rounded-lg border border-cream-200">
-                                    ${item.startTime === '翌朝'
-                                        ? `<span class="timeline-time-start">翌朝</span>`
-                                        : `<input type="time" value="${escapeHtml(item.startTime)}" aria-label="開始時刻" title="開始時刻を変更" onchange="updateItemStartTime(${index}, this)" onclick="event.stopPropagation()" class="timeline-time-start w-[82px] sm:w-[95px] min-w-0 bg-transparent font-mono text-xs font-bold text-warm-accent focus:outline-none focus:ring-1 focus:ring-warm-accent rounded">`}
+                                    ${renderClockPicker(item.startTime, '開始時刻', index, 'start')}
                                     <span class="text-cream-400">-</span>
-                                    ${isOvernight || item.endTime === '翌朝'
-                                        ? `<span class="timeline-time-end">翌朝</span>`
-                                        : `<input type="time" value="${escapeHtml(item.endTime)}" aria-label="終了時刻" title="終了時刻を変更" onchange="updateItemEndTime(${index}, this)" onclick="event.stopPropagation()" class="timeline-time-end w-[82px] sm:w-[95px] min-w-0 bg-transparent font-mono text-xs font-bold text-warm-accent focus:outline-none focus:ring-1 focus:ring-warm-accent rounded">`}
+                                    ${renderClockPicker(item.endTime, '終了時刻', index, 'end')}
                                 </div>
                             </div>
 
@@ -886,10 +956,13 @@
                     ['.timeline-time-end', items[index].endTime]
                 ]) {
                     const control = entry.querySelector(selector);
-                    if (!control || (control.tagName === 'INPUT') === (value === '翌朝')) {
+                    const hourSelect = control && control.querySelector('.clock-hour');
+                    if (!control || Boolean(hourSelect) === (value === '翌朝')) {
                         needsRebuild = true;
-                    } else if (control.tagName === 'INPUT') {
-                        control.value = value;
+                    } else if (hourSelect) {
+                        const [hour, minute] = value.split(':');
+                        hourSelect.value = hour;
+                        control.querySelector('.clock-minute').innerHTML = renderMinuteOptions(minute);
                     } else {
                         control.textContent = value;
                     }
@@ -901,7 +974,7 @@
                         const handler = control.getAttribute(attribute);
                         if (!handler) return;
                         control.setAttribute(attribute, handler.replace(
-                            /(updateItemDuration|updateItemStartTime|updateItemEndTime|removeTimelineItem|updateItemName|updateItemCategory|updateItemNotes|updateTransitTime|updateTransitNotes)\(\d+/g,
+                            /(updateItemDuration|updateTimelineClock|removeTimelineItem|updateItemName|updateItemCategory|updateItemNotes|updateTransitTime|updateTransitNotes)\(\d+/g,
                             (_, action) => `${action}(${index}`
                         ));
                     });
@@ -1067,34 +1140,8 @@
         function addItemToActiveDay(newItem) {
             const activeDay = itineraryData[activeDayIndex];
             if (!activeDay) return;
-
-            // Fill the next available part of the day before a meal. New days
-            // already contain dinner, so simply appending would put every new
-            // sightseeing item after dinner.
-            if (newItem.duration !== 'OVERNIGHT') {
-                for (const mealName of ['ランチ', 'ディナー']) {
-                    const mealIndex = activeDay.items.findIndex(item => item.id === `meal_${mealName}`);
-                    if (mealIndex < 0) continue;
-                    const previous = activeDay.items[mealIndex - 1];
-                    if (previous && previous.duration === 'OVERNIGHT') continue;
-                    const previousEnd = previous ? timeToMinutes(previous.endTime) : timeToMinutes(activeDay.startTime);
-                    const space = timeToMinutes(activeDay.items[mealIndex].startTime) - previousEnd;
-                    const moveBefore = previous ? Math.min(Number(previous.transitAfter) || 0, 30) : 0;
-                    const moveAfter = space - moveBefore - Number(newItem.duration);
-                    if (moveAfter >= 0) {
-                        if (previous) previous.transitAfter = moveBefore;
-                        newItem.transitAfter = moveAfter;
-                        activeDay.items.splice(mealIndex, 0, newItem);
-                        recalculateTimes();
-                        return;
-                    }
-                }
-            }
-
-            const dinnerIndex = activeDay.items.findIndex(item => item.id === 'meal_ディナー');
             const overnightIndex = activeDay.items.findIndex(item => item.duration === 'OVERNIGHT');
-            const insertIndex = [dinnerIndex, overnightIndex].filter(index => index >= 0);
-            if (insertIndex.length) activeDay.items.splice(Math.min(...insertIndex), 0, newItem);
+            if (overnightIndex >= 0) activeDay.items.splice(overnightIndex, 0, newItem);
             else activeDay.items.push(newItem);
 
             recalculateTimes();
@@ -1117,6 +1164,56 @@
             };
 
             addItemToActiveDay(newItem);
+        }
+
+        function addCommonPlan(kind) {
+            const plan = COMMON_PLANS[kind];
+            if (!plan) return;
+            const newItem = {
+                id: `common_${kind}_${Date.now()}`,
+                name: plan.name,
+                duration: plan.duration,
+                transitAfter: 30,
+                transitNotes: '',
+                notes: '',
+                category: plan.category,
+                startTime: '',
+                endTime: ''
+            };
+            if (!plan.preferredStartTime) {
+                addItemToActiveDay(newItem);
+                return;
+            }
+
+            const day = itineraryData[activeDayIndex];
+            if (!day) return;
+            const target = timeToMinutes(plan.preferredStartTime);
+            // Insert just before the first activity that extends past the meal
+            // time, so the meal starts near its target without overlapping the
+            // preceding activity. An overnight stay always stays last.
+            const insertAt = day.items.findIndex(item =>
+                item.endTime === '翌朝' || timeToMinutes(item.endTime) > target
+            );
+            const index = insertAt < 0 ? day.items.length : insertAt;
+            const previous = day.items[index - 1];
+            const following = day.items[index];
+            const earliestStart = previous
+                ? timeToMinutes(previous.endTime) + Number(previous.transitAfter ?? 30)
+                : target;
+            const mealStart = Math.max(target, earliestStart);
+            if (previous) {
+                previous.transitAfter = mealStart - timeToMinutes(previous.endTime);
+            } else {
+                day.startTime = minutesToTime(mealStart);
+            }
+            // Keep the next activity at its existing time when the gap allows
+            // it; otherwise leave a 30-minute transfer after the meal.
+            if (following && following.startTime !== '翌朝') {
+                newItem.transitAfter = Math.max(30,
+                    timeToMinutes(following.startTime) - mealStart - plan.duration);
+            }
+            day.items.splice(index, 0, newItem);
+            recalculateTimes();
         }
 
         function handleCustomSpotSubmit(e) {
@@ -1173,6 +1270,22 @@
         function rejectTimeEdit(input, previousValue, message) {
             input.value = previousValue;
             window.alert(message);
+        }
+
+        function updateTimelineClock(index, part, selected) {
+            const picker = selected.parentElement;
+            const hours = picker.querySelector('.clock-hour');
+            const minutes = picker.querySelector('.clock-minute');
+            const selection = {
+                get value() { return `${hours.value}:${minutes.value}`; },
+                set value(time) {
+                    const [hour, minute] = time.split(':');
+                    hours.value = hour;
+                    minutes.innerHTML = renderMinuteOptions(minute);
+                }
+            };
+            if (part === 'start') updateItemStartTime(index, selection);
+            else updateItemEndTime(index, selection);
         }
 
         function updateItemStartTime(index, input) {
@@ -1242,6 +1355,13 @@
             recalculateTimes();
         }
 
+        function updateDayStartTimeFromParts() {
+            const hour = document.getElementById('dayStartHourSelect').value;
+            const minute = document.getElementById('dayStartMinuteSelect').value;
+            updateDayStartTime(`${hour}:${minute}`);
+            renderDayTabs();
+        }
+
         function switchDay(index) {
             activeDayIndex = index;
             renderDayTabs();
@@ -1251,7 +1371,7 @@
 
         function addNewDay() {
             const nextNum = itineraryData.length + 1;
-            itineraryData.push(makeMealDay(nextNum));
+            itineraryData.push({ dayNumber: nextNum, startTime: '09:00', items: [] });
             activeDayIndex = itineraryData.length - 1;
             renderDayTabs();
             recalculateTimes();
@@ -1414,7 +1534,6 @@
         window.addEventListener('beforeprint', renderPdfOverview);
 
         window.onload = function() {
-            populate15MinTimeOptions();
             loadFromLocalStorage();
             renderDayTabs();
             renderSpotsList();
