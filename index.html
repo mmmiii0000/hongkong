@@ -428,7 +428,7 @@
             <div class="grid grid-cols-2 sm:grid-cols-4 gap-2.5">
                 <button onclick="addCommonPlan('breakfast')" class="bg-white hover:border-warm-accent border border-cream-200 rounded-xl p-3 text-left shadow-sm transition active:scale-95">
                     <span class="block text-xs font-bold text-warm-textDark"><i class="fa-solid fa-mug-hot text-warm-gold mr-1.5"></i>朝食</span>
-                    <span class="block text-[10px] text-warm-textMuted mt-1">9:00目安 · 45分</span>
+                    <span class="block text-[10px] text-warm-textMuted mt-1">7:00目安 · 45分</span>
                 </button>
                 <button onclick="addCommonPlan('lunch')" class="bg-white hover:border-warm-accent border border-cream-200 rounded-xl p-3 text-left shadow-sm transition active:scale-95">
                     <span class="block text-xs font-bold text-warm-textDark"><i class="fa-solid fa-utensils text-warm-gold mr-1.5"></i>ランチ</span>
@@ -520,7 +520,7 @@
         ];
 
         const COMMON_PLANS = {
-            breakfast: { name: '朝食', duration: 45, category: 'Food', preferredStartTime: '09:00' },
+            breakfast: { name: '朝食', duration: 45, category: 'Food', preferredStartTime: '07:00' },
             lunch: { name: 'ランチ', duration: 60, category: 'Food', preferredStartTime: '12:00' },
             dinner: { name: 'ディナー', duration: 60, category: 'Food', preferredStartTime: '19:00' },
             hotel: { name: 'ホテル', duration: 'OVERNIGHT', category: 'Hotel' }
@@ -1332,12 +1332,20 @@
             renderSpotsList();
         }
 
+        const DEFAULT_LAST_TRANSIT_MINUTES = 60;
+
         function addItemToActiveDay(newItem) {
             const activeDay = itineraryData[activeDayIndex];
             if (!activeDay) return;
             const overnightIndex = activeDay.items.findIndex(item => item.duration === 'OVERNIGHT');
-            if (overnightIndex >= 0) activeDay.items.splice(overnightIndex, 0, newItem);
-            else activeDay.items.push(newItem);
+            const insertAt = overnightIndex >= 0 ? overnightIndex : activeDay.items.length;
+            // A trailing item may still hold the gap to an activity that was
+            // deleted. A newly appended activity starts after a fresh hour.
+            if (insertAt > 0) activeDay.items[insertAt - 1].transitAfter = DEFAULT_LAST_TRANSIT_MINUTES;
+            activeDay.items.splice(insertAt, 0, newItem);
+            if (insertAt === activeDay.items.length - 1) {
+                newItem.transitAfter = DEFAULT_LAST_TRANSIT_MINUTES;
+            }
 
             recalculateTimes();
         }
@@ -1393,7 +1401,9 @@
             const previous = day.items[index - 1];
             const following = day.items[index];
             const earliestStart = previous
-                ? timeToMinutes(previous.endTime) + Number(previous.transitAfter ?? 30)
+                ? timeToMinutes(previous.endTime) + (following
+                    ? Number(previous.transitAfter ?? 30)
+                    : DEFAULT_LAST_TRANSIT_MINUTES)
                 : target;
             const mealStart = Math.max(target, earliestStart);
             if (previous) {
@@ -1406,6 +1416,8 @@
             if (following && following.startTime !== '翌朝') {
                 newItem.transitAfter = Math.max(30,
                     timeToMinutes(following.startTime) - mealStart - plan.duration);
+            } else if (!following) {
+                newItem.transitAfter = DEFAULT_LAST_TRANSIT_MINUTES;
             }
             day.items.splice(index, 0, newItem);
             recalculateTimes();
@@ -1546,7 +1558,11 @@
 
         function removeTimelineItem(index) {
             closeEventEditor();
-            itineraryData[activeDayIndex].items.splice(index, 1);
+            const items = itineraryData[activeDayIndex].items;
+            items.splice(index, 1);
+            if (index === items.length && items.length) {
+                items[items.length - 1].transitAfter = DEFAULT_LAST_TRANSIT_MINUTES;
+            }
             recalculateTimes();
         }
 
