@@ -516,7 +516,7 @@
                 </button>
                 <button onclick="addCommonPlan('hotel')" class="bg-white hover:border-warm-accent border border-cream-200 rounded-xl p-3 text-left shadow-sm transition active:scale-95">
                     <span class="block text-xs font-bold text-warm-textDark"><i class="fa-solid fa-hotel text-warm-gold mr-1.5"></i>ホテル</span>
-                    <span class="block text-[10px] text-warm-textMuted mt-1">翌朝まで · 追加する</span>
+                    <span class="block text-[10px] text-warm-textMuted mt-1">翌朝まで · 2件目以降は1時間</span>
                 </button>
             </div>
         </section>
@@ -890,43 +890,89 @@
             </span>`;
         }
 
+        function reduceTravelBefore(day, itemIndex, minutes, firstTransitIndex = 0) {
+            let remaining = Math.max(0, minutes);
+            for (let idx = itemIndex - 1; idx >= firstTransitIndex && remaining > 0; idx--) {
+                const available = Math.max(0, Number(day.items[idx].transitAfter) || 0);
+                const reduction = Math.min(available, remaining);
+                day.items[idx].transitAfter = available - reduction;
+                remaining -= reduction;
+            }
+            return minutes - remaining;
+        }
+
+        // Activity order and stay lengths are authoritative. Travel is fitted
+        // afterwards so a stale/large gap never blocks a valid rearrangement.
+        function fitTimelineConstraints(day) {
+            let current = timeToMinutes(day.startTime || '09:00');
+            let firstCompressibleTransit = 0;
+
+            for (let idx = 0; idx < day.items.length; idx++) {
+                const item = day.items[idx];
+                if (item.locked && isValidClockTime(item.lockedStartTime)) {
+                    const lockedMinute = timeToMinutes(item.lockedStartTime);
+                    if (current > lockedMinute) {
+                        current -= reduceTravelBefore(
+                            day, idx, current - lockedMinute, firstCompressibleTransit
+                        );
+                    }
+                    if (current > lockedMinute) {
+                        return { ok: false, reason: 'locked', itemName: item.name };
+                    }
+                    if (idx === 0) day.startTime = item.lockedStartTime;
+                    else day.items[idx - 1].transitAfter = Math.max(0,
+                        Number(day.items[idx - 1].transitAfter || 0) + lockedMinute - current);
+                    current = lockedMinute;
+                    firstCompressibleTransit = idx;
+                } else if (current >= SCHEDULE_END) {
+                    // Midnight is not a useful start time on this one-day
+                    // canvas. Pull the activity back to 23:30 by consuming
+                    // travel time first; only then move the unpinned day start.
+                    let required = current - (SCHEDULE_END - 30);
+                    const reduced = reduceTravelBefore(day, idx, required, firstCompressibleTransit);
+                    current -= reduced;
+                    required -= reduced;
+                    if (required > 0 && firstCompressibleTransit === 0) {
+                        const earliestStart = getScheduleStartMinutes(day);
+                        const startMinute = timeToMinutes(day.startTime || '09:00');
+                        const shift = Math.min(required, Math.max(0, startMinute - earliestStart));
+                        if (shift > 0) {
+                            day.startTime = gridTime(startMinute - shift);
+                            current -= shift;
+                            required -= shift;
+                        }
+                    }
+                    if (required > 0 || current > SCHEDULE_END - 30) {
+                        return { ok: false, reason: 'midnight', itemName: item.name };
+                    }
+                }
+
+                if (item.duration === 'OVERNIGHT') break;
+                current += parseInt(item.duration, 10) || DEFAULT_TRANSIT_MINUTES;
+                if (idx < day.items.length - 1) {
+                    current += Math.max(0, parseInt(item.transitAfter, 10) || 0);
+                }
+            }
+            return { ok: true };
+        }
+
         function recalculateTimes() {
             const activeDay = itineraryData[activeDayIndex];
             if (!activeDay || !activeDay.items) return;
 
-            // A pinned activity keeps its start time. Adjust the free travel
-            // time before it when possible; reject changes that would overlap it.
-            let probeMinute = timeToMinutes(activeDay.startTime || '09:00');
-            let previousEnd = probeMinute;
-            for (let idx = 0; idx < activeDay.items.length; idx++) {
-                const item = activeDay.items[idx];
-                if (item.locked && isValidClockTime(item.lockedStartTime)) {
-                    const lockedMinute = timeToMinutes(item.lockedStartTime);
-                    // The transfer before a pinned activity is flexible. Only
-                    // the preceding activity itself crossing the pinned start
-                    // is a real conflict; an oversized old transfer can shrink.
-                    const overlapsLockedStart = idx > 0 && previousEnd > lockedMinute;
-                    if (overlapsLockedStart && historyReady && lastHistoryData && !isRestoringHistory) {
-                        const lockedName = item.name;
-                        isRestoringHistory = true;
-                        itineraryData = JSON.parse(lastHistoryData);
-                        activeDayIndex = Math.min(lastHistoryDayIndex, itineraryData.length - 1);
-                        renderDayTabs();
-                        recalculateTimes();
-                        isRestoringHistory = false;
-                        window.alert(`「${lockedName}」は固定されています。固定時刻と重なるため、変更を元に戻しました。`);
-                        return;
-                    }
-                    if (idx === 0) activeDay.startTime = item.lockedStartTime;
-                    else activeDay.items[idx - 1].transitAfter = Math.max(0, lockedMinute - previousEnd);
-                    probeMinute = lockedMinute;
-                }
-                if (item.duration === 'OVERNIGHT') break;
-                previousEnd = probeMinute + (parseInt(item.duration, 10) || 30);
-                probeMinute = previousEnd;
-                if (idx < activeDay.items.length - 1) {
-                    probeMinute += parseInt(item.transitAfter ?? DEFAULT_TRANSIT_MINUTES, 10) || 0;
-                }
+            const fit = fitTimelineConstraints(activeDay);
+            if (!fit.ok && historyReady && lastHistoryData && !isRestoringHistory) {
+                isRestoringHistory = true;
+                itineraryData = JSON.parse(lastHistoryData);
+                activeDayIndex = Math.min(lastHistoryDayIndex, itineraryData.length - 1);
+                renderDayTabs();
+                recalculateTimes();
+                isRestoringHistory = false;
+                const message = fit.reason === 'locked'
+                    ? `「${fit.itemName}」の固定時刻までに、予定の滞在時間だけでも収まりません。変更を元に戻しました。`
+                    : `「${fit.itemName}」を23:30までに開始できないため、変更を元に戻しました。`;
+                window.alert(message);
+                return;
             }
 
             let currentMins = timeToMinutes(activeDay.startTime || '09:00');
@@ -1101,10 +1147,19 @@
             return Math.min(SCHEDULE_END - duration, fallback);
         }
 
+        function applyAutomaticHotelDuration(item, day) {
+            if (!item?.autoHotelDuration) return;
+            const alreadyHasHotel = day.items.some(existing =>
+                existing !== item && existing.category === 'Hotel'
+            );
+            item.duration = alreadyHasHotel ? 60 : 'OVERNIGHT';
+        }
+
         function stageItemForTimeline(item, preferredStartTime = null) {
             const day = itineraryData[activeDayIndex];
             if (!day) return;
             if (day.comparison) activateComparisonPlan('A');
+            applyAutomaticHotelDuration(item, day);
             const start = findProposalStart(day, item, preferredStartTime);
             pendingItemProposal = { item, start, dayIndex: activeDayIndex, planKey: 'A' };
             renderTimeline();
@@ -1199,6 +1254,7 @@
                 if (targetPlanKey) {
                     pendingItemProposal.planKey = targetPlanKey;
                     activateComparisonPlan(pendingItemProposal.planKey);
+                    applyAutomaticHotelDuration(pendingItemProposal.item, itineraryData[activeDayIndex]);
                     setProposalStart(pendingItemProposal.start, false);
                 }
             }
@@ -1266,6 +1322,7 @@
             activateComparisonPlan(proposal.planKey || 'A');
             const day = itineraryData[activeDayIndex];
             const item = { ...proposal.item };
+            applyAutomaticHotelDuration(item, day);
             pendingItemProposal = null;
             insertItemAtTime(day, item, proposal.start);
             recalculateTimes();
@@ -1678,6 +1735,7 @@
             saveActiveComparisonPlan(day);
 
             activateComparisonPlan(targetPlanKey);
+            applyAutomaticHotelDuration(movedItem, day);
             insertItemAtTime(day, movedItem, targetMinute);
             recalculateTimes();
         }
@@ -1687,72 +1745,73 @@
             if (isItemLocked(index)) return;
             const original = getTimelineIntervals(day);
             const copies = day.items.map(item => ({ ...item }));
-            const positions = original.map((entry, i) => ({ ...entry, item: copies[i] }));
-            const moved = positions[index];
+            const moved = copies[index];
             if (!moved) return;
-            const duration = moved.item.duration === 'OVERNIGHT' ? 15 : Number(moved.item.duration);
+            const duration = moved.duration === 'OVERNIGHT' ? 15 : Number(moved.duration);
             const maxStart = Math.floor((SCHEDULE_END - duration) / SCHEDULE_SLOT_MINUTES) * SCHEDULE_SLOT_MINUTES;
             const target = Math.max(getScheduleStartMinutes(), Math.min(maxStart,
                 Math.round(targetMinute / SCHEDULE_SLOT_MINUTES) * SCHEDULE_SLOT_MINUTES));
-            const remaining = positions.filter((_, i) => i !== index);
-            const beforeRemoval = positions[index - 1];
-            const afterRemoval = positions[index + 1];
-            let insertAt = moved.item.duration === 'OVERNIGHT' ? remaining.length :
-                remaining.findIndex(entry => target < entry.end || entry.item.duration === 'OVERNIGHT');
-            if (insertAt < 0) insertAt = remaining.length;
-            const reordered = insertAt !== index;
-            const rememberedGap = (from, to) => {
-                const key = JSON.stringify([from.item.id, to.item.id]);
-                return Object.prototype.hasOwnProperty.call(day.transitGaps || {}, key)
-                    ? Number(day.transitGaps[key]) : DEFAULT_TRANSIT_MINUTES;
-            };
-            const previous = remaining[insertAt - 1];
-            const following = remaining[insertAt];
-            const movingLater = reordered && insertAt > index;
-            const movingEarlier = reordered && insertAt < index;
-            const needsCompaction = (movingLater || movingEarlier) && following &&
-                target + duration + 30 > following.start;
-            if (reordered && beforeRemoval && afterRemoval && beforeRemoval.item.duration !== 'OVERNIGHT') {
-                // With enough room, keep every remaining activity at its
-                // existing clock time. Compact only when a direct swap would
-                // otherwise push the following activity back.
-                beforeRemoval.item.transitAfter = needsCompaction
-                    ? rememberedGap(beforeRemoval, afterRemoval)
-                    : Math.max(0, afterRemoval.start - beforeRemoval.end);
-            }
-            const afterRemovalIntervals = needsCompaction && remaining.length
-                ? getTimelineIntervals({ startTime: gridTime(original[0].start), items: remaining.map(entry => entry.item) })
-                : remaining;
-            const available = previous ? afterRemovalIntervals[insertAt - 1].end : getScheduleStartMinutes();
-            // Resolve the placement first. Transfers are derived only after
-            // the moved and untouched activity times have been chosen.
-            const actual = needsCompaction && movingLater && previous
-                ? Math.ceil(available / SCHEDULE_SLOT_MINUTES) * SCHEDULE_SLOT_MINUTES + rememberedGap(previous, moved)
-                : Math.max(target, Math.ceil(available / SCHEDULE_SLOT_MINUTES) * SCHEDULE_SLOT_MINUTES);
-            if (actual + duration > SCHEDULE_END) {
-                window.alert('24:00を超える位置には置けません。');
-                renderTimeline();
-                return;
-            }
-            if (previous) previous.item.transitAfter = actual - available;
-            if (following && moved.item.duration !== 'OVERNIGHT') {
-                // The placed times are authoritative. Derive the transfer from
-                // the moved activity to the next existing start; only use the
-                // standard transfer when the new activity overlaps it.
-                const availableGap = following.start - actual - duration;
-                moved.item.transitAfter = availableGap >= 0 ? availableGap : DEFAULT_TRANSIT_MINUTES;
-            } else if (!following) {
-                moved.item.transitAfter = DEFAULT_LAST_TRANSIT_MINUTES;
-            }
-            remaining.splice(insertAt, 0, moved);
+            const remainingIntervals = original.filter((_, i) => i !== index);
+            const remainingItems = copies.filter((_, i) => i !== index);
+            let insertAt = moved.duration === 'OVERNIGHT' ? remainingItems.length :
+                remainingIntervals.findIndex(entry => target < entry.end || entry.item.duration === 'OVERNIGHT');
+            if (insertAt < 0) insertAt = remainingItems.length;
+            remainingItems.splice(insertAt, 0, moved);
+
+            // Keep travel only for neighbor pairs that remain neighbors.
+            // Every newly created pair starts from the standard value, which
+            // prevents a removed item's old spacing from accumulating.
+            const originalNeighbor = new Map();
+            const originalById = new Map(original.map(entry => [entry.item.id, entry]));
+            day.items.slice(0, -1).forEach((item, idx) => {
+                originalNeighbor.set(item.id, day.items[idx + 1].id);
+            });
+            remainingItems.slice(0, -1).forEach((item, idx) => {
+                const nextItem = remainingItems[idx + 1];
+                if (originalNeighbor.get(item.id) !== nextItem.id) {
+                    item.transitAfter = DEFAULT_TRANSIT_MINUTES;
+                    // If this pair was formed only by removing the moved item,
+                    // keep the untouched following activity at its old time.
+                    if (item !== moved && nextItem !== moved) {
+                        const oldCurrent = originalById.get(item.id);
+                        const oldNext = originalById.get(nextItem.id);
+                        if (oldCurrent && oldNext && oldNext.start >= oldCurrent.end) {
+                            item.transitAfter = oldNext.start - oldCurrent.end;
+                        }
+                    }
+                }
+            });
+            remainingItems[remainingItems.length - 1].transitAfter = DEFAULT_LAST_TRANSIT_MINUTES;
+
+            let proposedStart = day.startTime;
+            if (insertAt === 0) proposedStart = gridTime(target);
             const proposed = {
-                startTime: gridTime(insertAt === 0 ? actual : (afterRemovalIntervals[0]?.start ?? remaining[0].start)),
-                items: remaining.map(entry => entry.item)
+                ...day,
+                startTime: proposedStart,
+                items: remainingItems
             };
-            const result = getTimelineIntervals(proposed);
-            if (result.length && result[result.length - 1].end > SCHEDULE_END &&
-                original[original.length - 1].end <= SCHEDULE_END) {
-                window.alert('後続の予定が24:00を超えます。置く位置を調整してください。');
+
+            // Honor the drop time when possible, then fit travel around pinned
+            // activities and the end of the one-day canvas.
+            let proposedIntervals = getTimelineIntervals(proposed);
+            if (insertAt > 0) {
+                const previous = proposedIntervals[insertAt - 1];
+                previous.item.transitAfter = Math.max(0, target - previous.end);
+            }
+            proposedIntervals = getTimelineIntervals(proposed);
+            const movedInterval = proposedIntervals[insertAt];
+            const followingItem = remainingItems[insertAt + 1];
+            const oldFollowing = followingItem && originalById.get(followingItem.id);
+            if (moved.duration !== 'OVERNIGHT' && movedInterval && oldFollowing &&
+                movedInterval.end <= oldFollowing.start) {
+                moved.transitAfter = oldFollowing.start - movedInterval.end;
+            }
+            const fit = fitTimelineConstraints(proposed);
+            if (!fit.ok) {
+                const message = fit.reason === 'locked'
+                    ? `「${fit.itemName}」の固定時刻までに、予定の滞在時間だけでも収まりません。`
+                    : `「${fit.itemName}」を23:30までに開始できません。`;
+                window.alert(message);
                 renderTimeline();
                 return;
             }
@@ -1930,6 +1989,7 @@
                 transitNotes: '',
                 notes: '',
                 category: plan.category,
+                autoHotelDuration: kind === 'hotel',
                 startTime: '',
                 endTime: ''
             };
