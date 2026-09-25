@@ -155,6 +155,31 @@
         }
         .resize-handle::after { content: ''; width: 36px; height: 3px; border-radius: 3px; background: #CBB7A4; }
         .resize-handle:hover::after { background: #B8502B; }
+        .schedule-proposal {
+            position: absolute; left: 22px; right: 8px; z-index: 8;
+            box-sizing: border-box; overflow: hidden;
+            border: 1px dashed #B8502B; border-left: 4px solid #B8502B;
+            border-radius: 9px; background: rgba(255, 249, 237, .97);
+            padding: 6px 8px; color: #4D3A28; text-align: left;
+            box-shadow: 0 10px 24px rgba(77, 58, 40, .18);
+            cursor: pointer; animation: proposal-arrive 420ms cubic-bezier(.22, .8, .32, 1) both;
+            transition: transform 140ms ease, box-shadow 140ms ease;
+            touch-action: none; user-select: none; -webkit-user-select: none;
+        }
+        .schedule-proposal:hover { transform: translateX(-3px); box-shadow: 0 12px 28px rgba(77, 58, 40, .22); }
+        .schedule-proposal.is-dragging { animation: none; transform: none; cursor: grabbing; box-shadow: 0 14px 30px rgba(77, 58, 40, .25); }
+        .schedule-proposal-row { display: flex; align-items: center; gap: 8px; min-width: 0; padding-right: 18px; }
+        .schedule-proposal-title { display: block; min-width: 0; flex: 1; font-size: 12px; font-weight: 700; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+        .schedule-proposal-meta { display: block; margin-top: 2px; font: 700 10px/1.3 monospace; color: #A74322; }
+        .schedule-proposal-hint { flex: none; font-size: 9px; font-weight: 600; color: #7A6A59; white-space: nowrap; }
+        .schedule-proposal-close { position: absolute; top: 3px; right: 4px; width: 20px; height: 20px; border-radius: 5px; color: #8E8070; }
+        .schedule-proposal-close:hover { background: #F4E3C6; color: #B8502B; }
+        @keyframes proposal-arrive {
+            0% { opacity: 0; transform: translateX(7px) translateY(0) scale(.985); }
+            55% { opacity: 1; transform: translateX(0) translateY(-4px) scale(1); }
+            78% { transform: translateX(0) translateY(1px) scale(1); }
+            100% { opacity: 1; transform: translateX(0) translateY(0) scale(1); }
+        }
         .schedule-transit {
             position: absolute; left: 4px; right: 5px; z-index: 2;
             box-sizing: border-box; overflow: hidden;
@@ -704,6 +729,7 @@
         function undoLastChange() {
             const previous = undoStack.pop();
             if (!previous) return;
+            pendingItemProposal = null;
             isRestoringHistory = true;
             closeEventEditor();
             itineraryData = JSON.parse(previous.data);
@@ -776,6 +802,7 @@
 
         function resetCurrentDay() {
             if (!itineraryData[activeDayIndex]) return;
+            pendingItemProposal = null;
             closeEventEditor();
             const initialDay = DEFAULT_ITINERARY[activeDayIndex] || {
                 dayNumber: activeDayIndex + 1, timelineStartTime: '06:00', startTime: '09:00', items: []
@@ -974,6 +1001,9 @@
         let scheduleGesture = null;
         let suppressEventClick = false;
         let editingItemIndex = null;
+        let pendingItemProposal = null;
+        let proposalGesture = null;
+        let suppressProposalClick = false;
 
         function getScheduleStartMinutes(day = itineraryData[activeDayIndex]) {
             const value = day?.timelineStartTime || '06:00';
@@ -1002,6 +1032,166 @@
                 }
                 return { item, start, end };
             });
+        }
+
+        function roundUpToScheduleSlot(minute) {
+            return Math.ceil(minute / SCHEDULE_SLOT_MINUTES) * SCHEDULE_SLOT_MINUTES;
+        }
+
+        function findProposalStart(day, item, preferredStartTime = null) {
+            const intervals = getTimelineIntervals(day);
+            const duration = item.duration === 'OVERNIGHT' ? 60 : Number(item.duration);
+            if (preferredStartTime) {
+                const target = timeToMinutes(preferredStartTime);
+                const overlappingIndex = intervals.findIndex(entry => target < entry.end || entry.item.duration === 'OVERNIGHT');
+                const previous = intervals[(overlappingIndex < 0 ? intervals.length : overlappingIndex) - 1];
+                return Math.max(target, previous ? previous.end : target);
+            }
+            if (!intervals.length) {
+                return Math.max(getScheduleStartMinutes(day), timeToMinutes(day.startTime || '09:00'));
+            }
+            if (item.duration === 'OVERNIGHT') {
+                const lastRegular = [...intervals].reverse().find(entry => entry.item.duration !== 'OVERNIGHT');
+                return Math.min(SCHEDULE_END - 60, roundUpToScheduleSlot((lastRegular?.end ?? intervals[0].start) + 60));
+            }
+
+            // Use the earliest complete gap after the first activity, allowing
+            // 30 minutes on each side. If none fits, offer the first time after
+            // the last regular activity.
+            for (let i = 0; i < intervals.length - 1; i++) {
+                const current = intervals[i];
+                const next = intervals[i + 1];
+                const candidate = roundUpToScheduleSlot(current.end + 30);
+                if (candidate + duration + 30 <= next.start) return candidate;
+            }
+            const lastRegular = [...intervals].reverse().find(entry => entry.item.duration !== 'OVERNIGHT');
+            const fallback = lastRegular
+                ? roundUpToScheduleSlot(lastRegular.end + 60)
+                : roundUpToScheduleSlot(intervals[0].start);
+            return Math.min(SCHEDULE_END - duration, fallback);
+        }
+
+        function stageItemForTimeline(item, preferredStartTime = null) {
+            const day = itineraryData[activeDayIndex];
+            if (!day) return;
+            const start = findProposalStart(day, item, preferredStartTime);
+            pendingItemProposal = { item, start, dayIndex: activeDayIndex };
+            renderTimeline();
+            requestAnimationFrame(() => {
+                const proposal = document.querySelector('.schedule-proposal');
+                if (proposal?.scrollIntoView) proposal.scrollIntoView({ behavior: 'smooth', block: 'center' });
+            });
+        }
+
+        function cancelPendingItem() {
+            pendingItemProposal = null;
+            renderTimeline();
+        }
+
+        function proposalDurationMinutes() {
+            if (!pendingItemProposal) return 60;
+            return pendingItemProposal.item.duration === 'OVERNIGHT'
+                ? 60 : Number(pendingItemProposal.item.duration);
+        }
+
+        function setProposalStart(minute, render = true) {
+            if (!pendingItemProposal) return;
+            const duration = proposalDurationMinutes();
+            pendingItemProposal.start = Math.max(getScheduleStartMinutes(), Math.min(
+                SCHEDULE_END - duration,
+                Math.round(minute / SCHEDULE_SLOT_MINUTES) * SCHEDULE_SLOT_MINUTES
+            ));
+            if (render) renderTimeline();
+        }
+
+        function beginProposalGesture(event) {
+            if (!pendingItemProposal || (event.button !== undefined && event.button !== 0)) return;
+            event.stopPropagation();
+            const card = event.currentTarget;
+            proposalGesture = {
+                pointerId: event.pointerId,
+                card,
+                startY: event.clientY,
+                startMinute: pendingItemProposal.start,
+                startPageScroll: Number(window.scrollY) || 0,
+                moved: false
+            };
+            card.setPointerCapture(event.pointerId);
+            card.addEventListener('pointermove', continueProposalGesture);
+            card.addEventListener('pointerup', endProposalGesture);
+            card.addEventListener('pointercancel', cancelProposalGesture);
+        }
+
+        function continueProposalGesture(event) {
+            const gesture = proposalGesture;
+            if (!gesture || event.pointerId !== gesture.pointerId) return;
+            const delta = event.clientY - gesture.startY + (Number(window.scrollY) || 0) - gesture.startPageScroll;
+            if (Math.abs(delta) < 6 && !gesture.moved) return;
+            event.preventDefault();
+            gesture.moved = true;
+            gesture.card.classList.add('is-dragging');
+            setProposalStart(gesture.startMinute + Math.round(delta / SCHEDULE_SLOT_HEIGHT) * SCHEDULE_SLOT_MINUTES, false);
+            const duration = proposalDurationMinutes();
+            const range = `${gridTime(pendingItemProposal.start)}–${pendingItemProposal.item.duration === 'OVERNIGHT' ? '翌朝' : gridTime(pendingItemProposal.start + duration)}`;
+            gesture.card.style.top = `${gridY(pendingItemProposal.start)}px`;
+            const meta = gesture.card.querySelector('.schedule-proposal-meta');
+            if (meta) meta.textContent = range;
+        }
+
+        function finishProposalGesture(event, cancelled) {
+            const gesture = proposalGesture;
+            if (!gesture || event.pointerId !== gesture.pointerId) return;
+            gesture.card.removeEventListener('pointermove', continueProposalGesture);
+            gesture.card.removeEventListener('pointerup', endProposalGesture);
+            gesture.card.removeEventListener('pointercancel', cancelProposalGesture);
+            if (gesture.card.hasPointerCapture(event.pointerId)) gesture.card.releasePointerCapture(event.pointerId);
+            proposalGesture = null;
+            if (cancelled) pendingItemProposal.start = gesture.startMinute;
+            if (gesture.moved) {
+                suppressProposalClick = true;
+                setTimeout(() => { suppressProposalClick = false; }, 100);
+                renderTimeline();
+            }
+        }
+
+        function endProposalGesture(event) { finishProposalGesture(event, false); }
+        function cancelProposalGesture(event) { finishProposalGesture(event, true); }
+
+        function handleProposalKey(event) {
+            if (event.key === 'ArrowUp' || event.key === 'ArrowDown') {
+                event.preventDefault();
+                setProposalStart(pendingItemProposal.start + (event.key === 'ArrowDown' ? 15 : -15));
+                return;
+            }
+            if (event.key === 'Enter' || event.key === ' ') {
+                event.preventDefault();
+                commitPendingItem();
+            }
+        }
+
+        function commitPendingItem() {
+            const proposal = pendingItemProposal;
+            if (!proposal || proposal.dayIndex !== activeDayIndex) return;
+            const day = itineraryData[activeDayIndex];
+            const intervals = getTimelineIntervals(day);
+            const item = { ...proposal.item };
+            const duration = item.duration === 'OVERNIGHT' ? 60 : Number(item.duration);
+            let insertAt = item.duration === 'OVERNIGHT' ? day.items.length :
+                intervals.findIndex(entry => proposal.start < entry.end || entry.item.duration === 'OVERNIGHT');
+            if (insertAt < 0) insertAt = day.items.length;
+            const previous = intervals[insertAt - 1];
+            const following = intervals[insertAt];
+            const actual = previous ? Math.max(proposal.start, previous.end) : proposal.start;
+            if (previous) day.items[insertAt - 1].transitAfter = Math.max(0, actual - previous.end);
+            else day.startTime = gridTime(actual);
+            if (following && item.duration !== 'OVERNIGHT') {
+                item.transitAfter = Math.max(30, following.start - actual - duration);
+            } else if (!following) {
+                item.transitAfter = DEFAULT_LAST_TRANSIT_MINUTES;
+            }
+            pendingItemProposal = null;
+            day.items.splice(insertAt, 0, item);
+            recalculateTimes();
         }
 
         function renderTimeline() {
@@ -1065,6 +1255,25 @@
 
             if (!intervals.length) {
                 blocks = `<div class="schedule-empty">まだ予定がありません。上の入力欄、または下の「定番予定」「香港の有名観光地」から追加できます。</div>`;
+            }
+            if (pendingItemProposal && pendingItemProposal.dayIndex === activeDayIndex) {
+                const proposal = pendingItemProposal;
+                const proposalDuration = proposal.item.duration === 'OVERNIGHT'
+                    ? Math.max(60, SCHEDULE_END - proposal.start)
+                    : Number(proposal.item.duration);
+                const proposalEnd = Math.min(SCHEDULE_END, proposal.start + proposalDuration);
+                const proposalHeight = Math.max(52, gridY(proposalEnd) - gridY(proposal.start));
+                const proposalRange = `${gridTime(proposal.start)}–${proposal.item.duration === 'OVERNIGHT' ? '翌朝' : gridTime(proposal.start + proposalDuration)}`;
+                blocks += `<div class="schedule-proposal" style="top:${gridY(proposal.start)}px;height:${proposalHeight}px" role="button" tabindex="0"
+                    title="ドラッグで時刻を変更、クリックで追加" aria-label="${escapeHtml(proposal.item.name)}、${escapeHtml(proposalRange)}。ドラッグで時刻を変更、クリックで追加"
+                    onpointerdown="beginProposalGesture(event)" onclick="if (!suppressProposalClick) commitPendingItem()" onkeydown="handleProposalKey(event)">
+                    <button type="button" class="schedule-proposal-close" title="追加を取り消す" aria-label="追加を取り消す" onpointerdown="event.stopPropagation()" onclick="event.stopPropagation();cancelPendingItem()"><i class="fa-solid fa-xmark"></i></button>
+                    <span class="schedule-proposal-row">
+                        <span class="schedule-proposal-title"><i class="fa-solid fa-plus text-warm-accent mr-1"></i>${escapeHtml(proposal.item.name)}</span>
+                        <span class="schedule-proposal-hint">クリックして追加</span>
+                    </span>
+                    <span class="schedule-proposal-meta">${escapeHtml(proposalRange)}</span>
+                </div>`;
             }
             container.innerHTML = `${hourLines}<div class="schedule-lane">${blocks}<div class="schedule-drop-guide" hidden></div></div>`;
             const overflowNotice = document.getElementById('scheduleOverflowNotice');
@@ -1310,10 +1519,16 @@
             // Use their new positions when setting the preceding transfer;
             // original coordinates would insert a second, hidden delay.
             const afterRemovalIntervals = reordered && remaining.length
-                ? getTimelineIntervals({ startTime: gridTime(remaining[0].start), items: remaining.map(entry => entry.item) })
+                ? getTimelineIntervals({ startTime: gridTime(original[0].start), items: remaining.map(entry => entry.item) })
                 : remaining;
             const available = previous ? afterRemovalIntervals[insertAt - 1].end : getScheduleStartMinutes();
-            const actual = Math.max(target, Math.ceil(available / SCHEDULE_SLOT_MINUTES) * SCHEDULE_SLOT_MINUTES);
+            const movingLater = reordered && insertAt > index;
+            // When swapping forward, the activities passed by the dragged item
+            // take its old space. Use the new order to place it instead of
+            // retaining the later drop coordinate and shifting everything.
+            const actual = movingLater && previous
+                ? Math.ceil(available / SCHEDULE_SLOT_MINUTES) * SCHEDULE_SLOT_MINUTES + rememberedGap(previous, moved)
+                : Math.max(target, Math.ceil(available / SCHEDULE_SLOT_MINUTES) * SCHEDULE_SLOT_MINUTES);
             if (actual + duration > SCHEDULE_END) {
                 window.alert('24:00を超える位置には置けません。');
                 renderTimeline();
@@ -1321,18 +1536,17 @@
             }
             if (previous) previous.item.transitAfter = actual - available;
             if (following && moved.item.duration !== 'OVERNIGHT') {
-                // Keep the next start fixed when only adjusting this activity's
-                // position. On a reorder, use the travel time for the new pair
-                // so a temporary overlap cannot push every later event back.
+                // The placed times are authoritative. Derive the transfer from
+                // the moved activity to the next existing start; only use the
+                // standard transfer when the new activity overlaps it.
                 const availableGap = following.start - actual - duration;
-                moved.item.transitAfter = reordered ? rememberedGap(moved, following)
-                    : availableGap >= 0 ? availableGap : 30;
+                moved.item.transitAfter = availableGap >= 0 ? availableGap : 30;
             } else if (!following) {
                 moved.item.transitAfter = DEFAULT_LAST_TRANSIT_MINUTES;
             }
             remaining.splice(insertAt, 0, moved);
             const proposed = {
-                startTime: gridTime(insertAt === 0 ? actual : remaining[0].start),
+                startTime: gridTime(insertAt === 0 ? actual : (afterRemovalIntervals[0]?.start ?? remaining[0].start)),
                 items: remaining.map(entry => entry.item)
             };
             const result = getTimelineIntervals(proposed);
@@ -1485,19 +1699,7 @@
         const DEFAULT_LAST_TRANSIT_MINUTES = 60;
 
         function addItemToActiveDay(newItem) {
-            const activeDay = itineraryData[activeDayIndex];
-            if (!activeDay) return;
-            const overnightIndex = activeDay.items.findIndex(item => item.duration === 'OVERNIGHT');
-            const insertAt = overnightIndex >= 0 ? overnightIndex : activeDay.items.length;
-            // A trailing item may still hold the gap to an activity that was
-            // deleted. A newly appended activity starts after a fresh hour.
-            if (insertAt > 0) activeDay.items[insertAt - 1].transitAfter = DEFAULT_LAST_TRANSIT_MINUTES;
-            activeDay.items.splice(insertAt, 0, newItem);
-            if (insertAt === activeDay.items.length - 1) {
-                newItem.transitAfter = DEFAULT_LAST_TRANSIT_MINUTES;
-            }
-
-            recalculateTimes();
+            stageItemForTimeline(newItem);
         }
 
         function addSpotToCurrentDay(spotId) {
@@ -1533,43 +1735,7 @@
                 startTime: '',
                 endTime: ''
             };
-            if (!plan.preferredStartTime) {
-                addItemToActiveDay(newItem);
-                return;
-            }
-
-            const day = itineraryData[activeDayIndex];
-            if (!day) return;
-            const target = timeToMinutes(plan.preferredStartTime);
-            // Insert just before the first activity that extends past the meal
-            // time, so the meal starts near its target without overlapping the
-            // preceding activity. An overnight stay always stays last.
-            const insertAt = day.items.findIndex(item =>
-                item.endTime === '翌朝' || timeToMinutes(item.endTime) > target
-            );
-            const index = insertAt < 0 ? day.items.length : insertAt;
-            const previous = day.items[index - 1];
-            const following = day.items[index];
-            // Place the meal from its preferred clock time first. The old
-            // transfer belonged to the previous pair and must not decide the
-            // meal's start; derive both neighboring transfers afterwards.
-            const earliestStart = previous ? timeToMinutes(previous.endTime) : target;
-            const mealStart = Math.max(target, earliestStart);
-            if (previous) {
-                previous.transitAfter = mealStart - timeToMinutes(previous.endTime);
-            } else {
-                day.startTime = minutesToTime(mealStart);
-            }
-            // Keep the next activity at its existing time when the gap allows
-            // it; otherwise leave a 30-minute transfer after the meal.
-            if (following && following.startTime !== '翌朝') {
-                newItem.transitAfter = Math.max(30,
-                    timeToMinutes(following.startTime) - mealStart - plan.duration);
-            } else if (!following) {
-                newItem.transitAfter = DEFAULT_LAST_TRANSIT_MINUTES;
-            }
-            day.items.splice(index, 0, newItem);
-            recalculateTimes();
+            stageItemForTimeline(newItem, plan.preferredStartTime || null);
         }
 
         function handleCustomSpotSubmit(e) {
@@ -1751,6 +1917,7 @@
 
         function switchDay(index) {
             closeEventEditor();
+            pendingItemProposal = null;
             activeDayIndex = index;
             renderDayTabs();
             recalculateTimes();
@@ -1758,6 +1925,7 @@
 
         function addNewDay() {
             closeEventEditor();
+            pendingItemProposal = null;
             const nextNum = itineraryData.length + 1;
             itineraryData.push({ dayNumber: nextNum, timelineStartTime: '06:00', startTime: '09:00', items: [] });
             activeDayIndex = itineraryData.length - 1;
@@ -1768,6 +1936,7 @@
         function removeDay(index) {
             if (itineraryData.length <= 1) return;
             closeEventEditor();
+            pendingItemProposal = null;
             itineraryData.splice(index, 1);
             itineraryData.forEach((day, i) => day.dayNumber = i + 1);
             activeDayIndex = Math.max(0, index - 1);
@@ -1779,6 +1948,7 @@
             const activeDay = itineraryData[activeDayIndex];
             if (!activeDay) return;
             closeEventEditor();
+            pendingItemProposal = null;
             activeDay.items = [];
             recalculateTimes();
         }
