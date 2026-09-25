@@ -1748,6 +1748,9 @@
             const moved = copies[index];
             if (!moved) return;
             const duration = moved.duration === 'OVERNIGHT' ? 15 : Number(moved.duration);
+            const originalPositionGaps = day.items.slice(0, -1).map(item =>
+                Math.max(0, Number(item.transitAfter) || 0)
+            );
             const maxStart = Math.floor((SCHEDULE_END - duration) / SCHEDULE_SLOT_MINUTES) * SCHEDULE_SLOT_MINUTES;
             const target = Math.max(getScheduleStartMinutes(), Math.min(maxStart,
                 Math.round(targetMinute / SCHEDULE_SLOT_MINUTES) * SCHEDULE_SLOT_MINUTES));
@@ -1756,17 +1759,23 @@
             let insertAt = moved.duration === 'OVERNIGHT' ? remainingItems.length :
                 remainingIntervals.findIndex(entry => target < entry.end || entry.item.duration === 'OVERNIGHT');
             if (insertAt < 0) insertAt = remainingItems.length;
+            const reordered = insertAt !== index;
             remainingItems.splice(insertAt, 0, moved);
 
-            // Keep travel only for neighbor pairs that remain neighbors.
-            // Every newly created pair starts from the standard value, which
-            // prevents a removed item's old spacing from accumulating.
+            // When the order changes, travel belongs to the boundary position,
+            // not to the activity that happened to be before it. This keeps,
+            // for example, the old second-to-third gap as the new
+            // second-to-third gap, so later evening plans do not drift.
             const originalNeighbor = new Map();
             const originalById = new Map(original.map(entry => [entry.item.id, entry]));
             day.items.slice(0, -1).forEach((item, idx) => {
                 originalNeighbor.set(item.id, day.items[idx + 1].id);
             });
             remainingItems.slice(0, -1).forEach((item, idx) => {
+                if (reordered) {
+                    item.transitAfter = originalPositionGaps[idx] ?? DEFAULT_TRANSIT_MINUTES;
+                    return;
+                }
                 const nextItem = remainingItems[idx + 1];
                 if (originalNeighbor.get(item.id) !== nextItem.id) {
                     item.transitAfter = DEFAULT_TRANSIT_MINUTES;
@@ -1794,7 +1803,7 @@
             // Honor the drop time when possible, then fit travel around pinned
             // activities and the end of the one-day canvas.
             let proposedIntervals = getTimelineIntervals(proposed);
-            if (insertAt > 0) {
+            if (!reordered && insertAt > 0) {
                 const previous = proposedIntervals[insertAt - 1];
                 previous.item.transitAfter = Math.max(0, target - previous.end);
             }
@@ -1802,7 +1811,7 @@
             const movedInterval = proposedIntervals[insertAt];
             const followingItem = remainingItems[insertAt + 1];
             const oldFollowing = followingItem && originalById.get(followingItem.id);
-            if (moved.duration !== 'OVERNIGHT' && movedInterval && oldFollowing &&
+            if (!reordered && moved.duration !== 'OVERNIGHT' && movedInterval && oldFollowing &&
                 movedInterval.end <= oldFollowing.start) {
                 moved.transitAfter = oldFollowing.start - movedInterval.end;
             }
