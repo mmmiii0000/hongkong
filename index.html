@@ -123,6 +123,7 @@
         }
         .schedule-event:hover, .schedule-event:focus-visible { border-color: #B8502B; box-shadow: 0 5px 16px rgba(77, 58, 40, .16); outline: none; }
         .schedule-event.is-dragging { z-index: 20; opacity: .94; box-shadow: 0 16px 28px rgba(77, 58, 40, .24); transition: none; cursor: grabbing; }
+        .schedule-event.is-locked { border-style: solid; background: #FFF9ED; cursor: pointer; }
         body.is-dragging-schedule { user-select: none; -webkit-user-select: none; }
         .schedule-event-main { display: flex; align-items: center; gap: 5px; min-width: 0; height: 20px; }
         .schedule-event-title { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-size: 12px; font-weight: 700; min-width: 0; flex: 1; }
@@ -139,6 +140,14 @@
         }
         .grab-handle:hover { color: #B8502B; background: #F4EFE6; }
         .grab-handle:active { cursor: grabbing; }
+        .pin-toggle {
+            display: inline-flex; align-items: center; justify-content: center;
+            width: 20px; height: 20px; flex: none; border-radius: 5px;
+            color: #9F8C78; cursor: pointer; touch-action: manipulation;
+        }
+        .pin-toggle:hover { color: #B8502B; background: #F4EFE6; }
+        .pin-toggle.is-active { color: #B8502B; background: #F4E3C6; }
+        .schedule-event.is-compact .pin-toggle { position: absolute; right: 2px; top: 50%; transform: translateY(-50%); }
         .resize-handle {
             position: absolute; bottom: 0; left: 0; right: 0; height: 9px;
             display: flex; justify-content: center; align-items: center;
@@ -298,6 +307,11 @@
                     <i class="fa-solid fa-floppy-disk text-emerald-600"></i>
                     <span>自動保存済</span>
                 </div>
+
+                <button id="undoButton" onclick="undoLastChange()" disabled title="元に戻す" aria-label="元に戻す" class="px-2.5 py-1.5 sm:px-3 sm:py-2 text-xs font-semibold bg-white text-warm-textDark border border-cream-300 rounded-xl transition flex items-center gap-1.5 shadow-sm active:scale-95 disabled:opacity-35 disabled:cursor-not-allowed disabled:active:scale-100">
+                    <i class="fa-solid fa-arrow-rotate-left"></i>
+                    <span class="hidden sm:inline">元に戻す</span>
+                </button>
 
                 <button onclick="downloadTextItinerary()" class="px-2.5 py-1.5 sm:px-3.5 sm:py-2 text-xs font-semibold bg-white hover:bg-cream-100 text-warm-textDark border border-cream-300 rounded-xl transition flex items-center gap-1.5 shadow-sm active:scale-95">
                     <i class="fa-solid fa-file-lines text-warm-accent"></i>
@@ -664,8 +678,46 @@
         let activeDayIndex = 0;
         let itineraryData = JSON.parse(JSON.stringify(DEFAULT_ITINERARY));
         let saveBadgeTimer = null;
+        let undoStack = [];
+        let historyReady = false;
+        let isRestoringHistory = false;
+        let lastHistoryData = '';
+        let lastHistoryDayIndex = 0;
+
+        function updateUndoButton() {
+            if (!document.getElementById) return;
+            const button = document.getElementById('undoButton');
+            if (button) button.disabled = undoStack.length === 0;
+        }
+
+        function captureUndoState() {
+            const currentData = JSON.stringify(itineraryData);
+            if (historyReady && !isRestoringHistory && lastHistoryData && currentData !== lastHistoryData) {
+                undoStack.push({ data: lastHistoryData, activeDayIndex: lastHistoryDayIndex });
+                if (undoStack.length > 50) undoStack.shift();
+            }
+            lastHistoryData = currentData;
+            lastHistoryDayIndex = activeDayIndex;
+            updateUndoButton();
+        }
+
+        function undoLastChange() {
+            const previous = undoStack.pop();
+            if (!previous) return;
+            isRestoringHistory = true;
+            closeEventEditor();
+            itineraryData = JSON.parse(previous.data);
+            activeDayIndex = Math.min(previous.activeDayIndex, itineraryData.length - 1);
+            renderDayTabs();
+            recalculateTimes();
+            isRestoringHistory = false;
+            lastHistoryData = JSON.stringify(itineraryData);
+            lastHistoryDayIndex = activeDayIndex;
+            updateUndoButton();
+        }
 
         function autoSaveToLocalStorage() {
+            captureUndoState();
             try {
                 const payload = {
                     activeDayIndex: activeDayIndex,
@@ -778,20 +830,51 @@
             ).join('');
         }
 
-        function renderClockPicker(time, label, index, part) {
+        function renderClockPicker(time, label, index, part, locked = false) {
             if (time === '翌朝') return `<span class="timeline-time-${part}">翌朝</span>`;
             const [hour, minute] = time.split(':');
             const selectClass = 'w-[48px] bg-white border border-cream-300 rounded text-center font-mono text-xs font-bold text-warm-accent focus:outline-none focus:border-warm-accent cursor-pointer';
             return `<span class="timeline-time-${part} inline-flex items-center gap-0.5">
-                <select aria-label="${label}の時" title="${label}の時を選択" class="clock-hour ${selectClass}" onchange="updateTimelineClock(${index}, '${part}', this)" onclick="event.stopPropagation()">${renderHourOptions(hour)}</select>
+                <select ${locked ? 'disabled' : ''} aria-label="${label}の時" title="${label}の時を選択" class="clock-hour ${selectClass} disabled:bg-cream-100 disabled:text-warm-textMuted disabled:cursor-not-allowed" onchange="updateTimelineClock(${index}, '${part}', this)" onclick="event.stopPropagation()">${renderHourOptions(hour)}</select>
                 <span>:</span>
-                <select aria-label="${label}の分" title="${label}の分を選択" class="clock-minute ${selectClass}" onchange="updateTimelineClock(${index}, '${part}', this)" onclick="event.stopPropagation()">${renderMinuteOptions(minute)}</select>
+                <select ${locked ? 'disabled' : ''} aria-label="${label}の分" title="${label}の分を選択" class="clock-minute ${selectClass} disabled:bg-cream-100 disabled:text-warm-textMuted disabled:cursor-not-allowed" onchange="updateTimelineClock(${index}, '${part}', this)" onclick="event.stopPropagation()">${renderMinuteOptions(minute)}</select>
             </span>`;
         }
 
         function recalculateTimes() {
             const activeDay = itineraryData[activeDayIndex];
             if (!activeDay || !activeDay.items) return;
+
+            // A pinned activity keeps its start time. Adjust the free travel
+            // time before it when possible; reject changes that would overlap it.
+            let probeMinute = timeToMinutes(activeDay.startTime || '09:00');
+            let previousEnd = probeMinute;
+            for (let idx = 0; idx < activeDay.items.length; idx++) {
+                const item = activeDay.items[idx];
+                if (item.locked && isValidClockTime(item.lockedStartTime)) {
+                    const lockedMinute = timeToMinutes(item.lockedStartTime);
+                    if (probeMinute > lockedMinute && historyReady && lastHistoryData && !isRestoringHistory) {
+                        const lockedName = item.name;
+                        isRestoringHistory = true;
+                        itineraryData = JSON.parse(lastHistoryData);
+                        activeDayIndex = Math.min(lastHistoryDayIndex, itineraryData.length - 1);
+                        renderDayTabs();
+                        recalculateTimes();
+                        isRestoringHistory = false;
+                        window.alert(`「${lockedName}」は固定されています。固定時刻と重なるため、変更を元に戻しました。`);
+                        return;
+                    }
+                    if (idx === 0) activeDay.startTime = item.lockedStartTime;
+                    else activeDay.items[idx - 1].transitAfter = Math.max(0, lockedMinute - previousEnd);
+                    probeMinute = lockedMinute;
+                }
+                if (item.duration === 'OVERNIGHT') break;
+                previousEnd = probeMinute + (parseInt(item.duration, 10) || 30);
+                probeMinute = previousEnd;
+                if (idx < activeDay.items.length - 1) {
+                    probeMinute += parseInt(item.transitAfter ?? 30, 10) || 0;
+                }
+            }
 
             let currentMins = timeToMinutes(activeDay.startTime || '09:00');
             let isOvernightActive = false;
@@ -946,19 +1029,21 @@
                     const category = getCategoryStyle(item.category);
                     const range = `${gridTime(start)}–${item.duration === 'OVERNIGHT' ? '翌朝' : gridTime(end)}`;
                     const compact = height < 48;
-                    blocks += `<div class="schedule-event ${compact ? 'is-compact' : ''}" data-index="${index}"
+                    blocks += `<div class="schedule-event ${compact ? 'is-compact' : ''} ${item.locked ? 'is-locked' : ''}" data-index="${index}"
                         style="top:${gridY(top)}px;height:${height}px;border-left-color:${item.category === 'Food' ? '#C5954B' : item.category === 'Hotel' ? '#7F6D50' : '#B8502B'}"
                         role="button" tabindex="0" title="${escapeHtml(item.name)} ${escapeHtml(range)}" aria-label="${escapeHtml(item.name)} ${escapeHtml(range)}、詳細を編集"
                         onpointerdown="beginScheduleGesture(event, ${index}, 'move')"
                         onclick="if (!suppressEventClick) openEventEditor(${index})"
                         onkeydown="if (event.target === this && (event.key === 'Enter' || event.key === ' ')) {event.preventDefault(); openEventEditor(${index})}">
-                        ${compact ? `<div class="schedule-compact-title">${escapeHtml(item.name)}</div><span class="schedule-event-time" hidden>${escapeHtml(range)}</span>` : `<div class="schedule-event-main">
-                            <button type="button" class="grab-handle" title="ドラッグで開始時刻を変更" aria-label="${escapeHtml(item.name)}を移動" onpointerdown="beginScheduleGesture(event, ${index}, 'move')" onkeydown="handleScheduleKey(event, ${index}, 'move')" onclick="event.stopPropagation()"><i class="fa-solid fa-grip-vertical"></i></button>
+                        ${compact ? `<div class="schedule-compact-title">${escapeHtml(item.name)}</div><span class="schedule-event-time" hidden>${escapeHtml(range)}</span>
+                            <button type="button" class="pin-toggle ${item.locked ? 'is-active' : ''}" title="${item.locked ? '固定を解除' : 'この予定を固定'}" aria-label="${escapeHtml(item.name)}の${item.locked ? '固定を解除' : '予定を固定'}" onpointerdown="event.stopPropagation()" onclick="event.stopPropagation();toggleItemLock(${index})"><i class="fa-solid fa-thumbtack"></i></button>` : `<div class="schedule-event-main">
+                            ${item.locked ? '' : `<button type="button" class="grab-handle" title="ドラッグで開始時刻を変更" aria-label="${escapeHtml(item.name)}を移動" onpointerdown="beginScheduleGesture(event, ${index}, 'move')" onkeydown="handleScheduleKey(event, ${index}, 'move')" onclick="event.stopPropagation()"><i class="fa-solid fa-grip-vertical"></i></button>`}
                             <span class="schedule-event-title"><i class="fa-solid ${category.icon} text-[10px] text-warm-gold mr-1"></i>${escapeHtml(item.name)}</span>
                             <span class="schedule-event-time">${escapeHtml(range)}</span>
+                            <button type="button" class="pin-toggle ${item.locked ? 'is-active' : ''}" title="${item.locked ? '固定を解除' : 'この予定を固定'}" aria-label="${escapeHtml(item.name)}の${item.locked ? '固定を解除' : '予定を固定'}" onpointerdown="event.stopPropagation()" onclick="event.stopPropagation();toggleItemLock(${index})"><i class="fa-solid fa-thumbtack"></i></button>
                         </div>`}
                         ${height >= 48 && item.notes ? `<div class="schedule-event-note">${escapeHtml(item.notes)}</div>` : ''}
-                        ${item.duration !== 'OVERNIGHT' ? `<button type="button" class="resize-handle" title="ドラッグで滞在時間を変更" aria-label="${escapeHtml(item.name)}の滞在時間を変更" onpointerdown="beginScheduleGesture(event, ${index}, 'resize')" onkeydown="handleScheduleKey(event, ${index}, 'resize')" onclick="event.stopPropagation()"></button>` : ''}
+                        ${item.duration !== 'OVERNIGHT' && !item.locked ? `<button type="button" class="resize-handle" title="ドラッグで滞在時間を変更" aria-label="${escapeHtml(item.name)}の滞在時間を変更" onpointerdown="beginScheduleGesture(event, ${index}, 'resize')" onkeydown="handleScheduleKey(event, ${index}, 'resize')" onclick="event.stopPropagation()"></button>` : ''}
                     </div>`;
                 } else {
                     hasHiddenEntries = true;
@@ -1002,6 +1087,7 @@
             if (!item) { closeEventEditor(); return; }
             const index = editingItemIndex;
             const hasNext = index < day.items.length - 1;
+            const lockedAttr = item.locked ? 'disabled' : '';
             const categories = [
                 ['Landmark', '定番名所'], ['Culture', '歴史・文化'], ['Food', 'グルメ・飲茶'],
                 ['Shopping', '買物'], ['Nature', '絶景・自然'], ['ThemePark', 'テーマパーク'],
@@ -1010,33 +1096,37 @@
             document.getElementById('eventEditorContent').innerHTML = `
                 <div class="sticky top-0 bg-white border-b border-cream-200 px-5 py-3 flex items-center justify-between z-10">
                     <h3 class="font-bold text-sm">予定の詳細</h3>
-                    <button type="button" onclick="closeEventEditor()" aria-label="閉じる" class="w-8 h-8 rounded-lg hover:bg-cream-100"><i class="fa-solid fa-xmark"></i></button>
+                    <div class="flex items-center gap-1">
+                        <button type="button" onclick="toggleItemLock(${index})" title="${item.locked ? '固定を解除' : 'この予定を固定'}" aria-label="${item.locked ? '固定を解除' : 'この予定を固定'}" class="w-8 h-8 rounded-lg ${item.locked ? 'bg-amber-100 text-warm-accent' : 'hover:bg-cream-100 text-warm-textMuted'}"><i class="fa-solid fa-thumbtack"></i></button>
+                        <button type="button" onclick="closeEventEditor()" aria-label="閉じる" class="w-8 h-8 rounded-lg hover:bg-cream-100"><i class="fa-solid fa-xmark"></i></button>
+                    </div>
                 </div>
                 <div class="p-5 space-y-4 text-xs">
+                    ${item.locked ? `<div class="rounded-lg border border-amber-200 bg-amber-50 px-3 py-2 text-amber-900"><i class="fa-solid fa-thumbtack mr-1"></i>固定中です。編集するには押しピンをもう一度押してください。</div>` : ''}
                     <label class="block font-semibold">予定名
-                        <input type="text" value="${escapeHtml(item.name)}" onchange="updateItemName(${index},this.value);renderTimeline()" class="block mt-1 w-full rounded-lg border border-cream-300 p-2 font-normal focus:outline-none focus:border-warm-accent">
+                        <input type="text" value="${escapeHtml(item.name)}" ${lockedAttr} onchange="updateItemName(${index},this.value);renderTimeline()" class="block mt-1 w-full rounded-lg border border-cream-300 p-2 font-normal focus:outline-none focus:border-warm-accent disabled:bg-cream-100 disabled:text-warm-textMuted">
                     </label>
                     <div class="grid grid-cols-2 gap-3">
                         <label class="font-semibold">分類
-                            <select onchange="updateItemCategory(${index},this.value)" class="block mt-1 w-full rounded-lg border border-cream-300 p-2 font-normal">${categories.map(([value, label]) => `<option value="${value}" ${item.category === value ? 'selected' : ''}>${label}</option>`).join('')}</select>
+                            <select ${lockedAttr} onchange="updateItemCategory(${index},this.value)" class="block mt-1 w-full rounded-lg border border-cream-300 p-2 font-normal disabled:bg-cream-100 disabled:text-warm-textMuted">${categories.map(([value, label]) => `<option value="${value}" ${item.category === value ? 'selected' : ''}>${label}</option>`).join('')}</select>
                         </label>
                         <label class="font-semibold">滞在時間
-                            <select onchange="updateItemDuration(${index},this.value)" class="block mt-1 w-full rounded-lg border border-cream-300 p-2 font-normal">${renderDurationOptions(item.duration)}</select>
+                            <select ${lockedAttr} onchange="updateItemDuration(${index},this.value)" class="block mt-1 w-full rounded-lg border border-cream-300 p-2 font-normal disabled:bg-cream-100 disabled:text-warm-textMuted">${renderDurationOptions(item.duration)}</select>
                         </label>
                     </div>
                     <div class="grid grid-cols-2 gap-3">
-                        <div><div class="font-semibold mb-1">開始</div><div class="flex items-center gap-1">${renderClockPicker(item.startTime,'開始時刻',index,'start')}</div></div>
-                        <div><div class="font-semibold mb-1">終了</div><div class="flex items-center gap-1">${renderClockPicker(item.endTime,'終了時刻',index,'end')}</div></div>
+                        <div><div class="font-semibold mb-1">開始</div><div class="flex items-center gap-1">${renderClockPicker(item.startTime,'開始時刻',index,'start',item.locked)}</div></div>
+                        <div><div class="font-semibold mb-1">終了</div><div class="flex items-center gap-1">${renderClockPicker(item.endTime,'終了時刻',index,'end',item.locked)}</div></div>
                     </div>
                     <label class="block font-semibold">メモ
-                        <input type="text" value="${escapeHtml(item.notes || '')}" onchange="updateItemNotes(${index},this.value);renderTimeline()" placeholder="予約情報など" class="block mt-1 w-full rounded-lg border border-cream-300 p-2 font-normal focus:outline-none focus:border-warm-accent">
+                        <input type="text" value="${escapeHtml(item.notes || '')}" ${lockedAttr} onchange="updateItemNotes(${index},this.value);renderTimeline()" placeholder="予約情報など" class="block mt-1 w-full rounded-lg border border-cream-300 p-2 font-normal focus:outline-none focus:border-warm-accent disabled:bg-cream-100 disabled:text-warm-textMuted">
                     </label>
                     ${hasNext ? `<div class="rounded-xl bg-cream-100/60 border border-cream-200 p-3 space-y-2">
                         <div class="font-semibold text-warm-textMuted"><i class="fa-solid fa-person-walking mr-1"></i>次の予定までの移動</div>
-                        <label class="flex items-center gap-2">時間 <input type="number" min="0" max="1439" step="1" value="${Number(item.transitAfter ?? 30)}" onchange="updateTransitTime(${index},this.value)" class="w-20 rounded-lg border border-cream-300 p-1.5 font-normal text-center">分</label>
-                        <input type="text" value="${escapeHtml(item.transitNotes || '')}" onchange="updateTransitNotes(${index},this.value);renderTimeline()" placeholder="移動メモ" class="w-full rounded-lg border border-cream-300 p-2 font-normal">
+                        <label class="flex items-center gap-2">時間 <input type="number" min="0" max="1439" step="1" value="${Number(item.transitAfter ?? 30)}" ${lockedAttr} onchange="updateTransitTime(${index},this.value)" class="w-20 rounded-lg border border-cream-300 p-1.5 font-normal text-center disabled:bg-cream-100">分</label>
+                        <input type="text" value="${escapeHtml(item.transitNotes || '')}" ${lockedAttr} onchange="updateTransitNotes(${index},this.value);renderTimeline()" placeholder="移動メモ" class="w-full rounded-lg border border-cream-300 p-2 font-normal disabled:bg-cream-100">
                     </div>` : ''}
-                    <button type="button" onclick="removeTimelineItem(${index})" class="w-full py-2 rounded-lg border border-rose-200 text-rose-700 hover:bg-rose-50"><i class="fa-solid fa-trash-can mr-1"></i>この予定を削除</button>
+                    <button type="button" ${lockedAttr} onclick="removeTimelineItem(${index})" class="w-full py-2 rounded-lg border border-rose-200 text-rose-700 hover:bg-rose-50 disabled:opacity-35 disabled:cursor-not-allowed"><i class="fa-solid fa-trash-can mr-1"></i>この予定を削除</button>
                 </div>`;
         }
 
@@ -1053,6 +1143,19 @@
             if (editor && editor.open) editor.close();
         }
 
+        function isItemLocked(index) {
+            return !!itineraryData[activeDayIndex]?.items?.[index]?.locked;
+        }
+
+        function toggleItemLock(index) {
+            const item = itineraryData[activeDayIndex]?.items?.[index];
+            if (!item) return;
+            item.locked = !item.locked;
+            if (item.locked) item.lockedStartTime = item.startTime;
+            else delete item.lockedStartTime;
+            recalculateTimes();
+        }
+
         function beginScheduleGesture(event, index, mode) {
             if (event.button !== undefined && event.button !== 0) return;
             // Allow the card's native click after a tap; the resize and grab
@@ -1063,6 +1166,7 @@
             const card = event.currentTarget.closest('.schedule-event');
             const interval = getTimelineIntervals(itineraryData[activeDayIndex])[index];
             if (!card || !interval || !lane) return;
+            if (interval.item.locked) return;
             scheduleGesture = {
                 pointerId: event.pointerId, handle: event.currentTarget, card, lane,
                 mode, index, interval, startY: event.clientY, clientY: event.clientY,
@@ -1103,7 +1207,7 @@
                     Math.round(gesture.interval.start / SCHEDULE_SLOT_MINUTES) * SCHEDULE_SLOT_MINUTES + slots * SCHEDULE_SLOT_MINUTES));
                 const otherEntries = getTimelineIntervals(itineraryData[activeDayIndex]).filter((_, i) => i !== gesture.index);
                 let insertAt = gesture.interval.item.duration === 'OVERNIGHT' ? otherEntries.length :
-                    otherEntries.findIndex(entry => entry.start >= gesture.value || entry.item.duration === 'OVERNIGHT');
+                    otherEntries.findIndex(entry => gesture.value < entry.end || entry.item.duration === 'OVERNIGHT');
                 if (insertAt < 0) insertAt = otherEntries.length;
                 const previous = otherEntries[insertAt - 1];
                 if (previous) {
@@ -1166,6 +1270,7 @@
             if (event.key !== 'ArrowUp' && event.key !== 'ArrowDown') return;
             event.preventDefault();
             event.stopPropagation();
+            if (isItemLocked(index)) return;
             const interval = getTimelineIntervals(itineraryData[activeDayIndex])[index];
             const delta = event.key === 'ArrowDown' ? 15 : -15;
             if (mode === 'move') moveTimelineItemToTime(index, interval.start + delta);
@@ -1174,6 +1279,7 @@
 
         function moveTimelineItemToTime(index, targetMinute) {
             const day = itineraryData[activeDayIndex];
+            if (isItemLocked(index)) return;
             const original = getTimelineIntervals(day);
             const copies = day.items.map(item => ({ ...item }));
             const positions = original.map((entry, i) => ({ ...entry, item: copies[i] }));
@@ -1187,7 +1293,7 @@
             const beforeRemoval = positions[index - 1];
             const afterRemoval = positions[index + 1];
             let insertAt = moved.item.duration === 'OVERNIGHT' ? remaining.length :
-                remaining.findIndex(entry => entry.start >= target || entry.item.duration === 'OVERNIGHT');
+                remaining.findIndex(entry => target < entry.end || entry.item.duration === 'OVERNIGHT');
             if (insertAt < 0) insertAt = remaining.length;
             const reordered = insertAt !== index;
             const rememberedGap = (from, to) => {
@@ -1244,6 +1350,7 @@
 
         function resizeTimelineItem(index, requestedDuration) {
             const day = itineraryData[activeDayIndex];
+            if (isItemLocked(index)) return;
             const original = getTimelineIntervals(day);
             const current = original[index];
             if (!current || current.item.duration === 'OVERNIGHT') return;
@@ -1443,11 +1550,10 @@
             const index = insertAt < 0 ? day.items.length : insertAt;
             const previous = day.items[index - 1];
             const following = day.items[index];
-            const earliestStart = previous
-                ? timeToMinutes(previous.endTime) + (following
-                    ? Number(previous.transitAfter ?? 30)
-                    : DEFAULT_LAST_TRANSIT_MINUTES)
-                : target;
+            // Place the meal from its preferred clock time first. The old
+            // transfer belonged to the previous pair and must not decide the
+            // meal's start; derive both neighboring transfers afterwards.
+            const earliestStart = previous ? timeToMinutes(previous.endTime) : target;
             const mealStart = Math.max(target, earliestStart);
             if (previous) {
                 previous.transitAfter = mealStart - timeToMinutes(previous.endTime);
@@ -1492,17 +1598,20 @@
         }
 
         function updateItemName(index, val) {
+            if (isItemLocked(index)) return;
             itineraryData[activeDayIndex].items[index].name = val.trim();
             autoSaveToLocalStorage();
         }
 
         function updateItemCategory(index, val) {
+            if (isItemLocked(index)) return;
             itineraryData[activeDayIndex].items[index].category = val;
             renderTimeline();
             autoSaveToLocalStorage();
         }
 
         function updateItemDuration(index, val) {
+            if (isItemLocked(index)) return;
             if (val === 'OVERNIGHT') {
                 itineraryData[activeDayIndex].items[index].duration = 'OVERNIGHT';
                 recalculateTimes();
@@ -1546,6 +1655,7 @@
         function updateItemStartTime(index, input) {
             const day = itineraryData[activeDayIndex];
             const item = day.items[index];
+            if (item.locked) return;
             const newTime = input.value;
             if (!isValidClockTime(newTime)) {
                 rejectTimeEdit(input, item.startTime, '開始時刻を時:分の形式で入力してください。');
@@ -1572,6 +1682,7 @@
 
         function updateItemEndTime(index, input) {
             const item = itineraryData[activeDayIndex].items[index];
+            if (item.locked) return;
             const newTime = input.value;
             if (!isValidClockTime(newTime) || timeToMinutes(newTime) <= timeToMinutes(item.startTime)) {
                 rejectTimeEdit(input, item.endTime, '終了時刻は開始時刻より後にしてください。');
@@ -1583,6 +1694,7 @@
         }
 
         function updateTransitTime(index, val) {
+            if (isItemLocked(index)) return;
             const parsed = parseInt(val, 10);
             if (isNaN(parsed) || parsed < 0) return;
             itineraryData[activeDayIndex].items[index].transitAfter = parsed;
@@ -1590,20 +1702,34 @@
         }
 
         function updateTransitNotes(index, val) {
+            if (isItemLocked(index)) return;
             itineraryData[activeDayIndex].items[index].transitNotes = val;
             autoSaveToLocalStorage();
         }
 
         function updateItemNotes(index, text) {
+            if (isItemLocked(index)) return;
             itineraryData[activeDayIndex].items[index].notes = text;
             autoSaveToLocalStorage();
         }
 
         function removeTimelineItem(index) {
+            if (isItemLocked(index)) return;
             closeEventEditor();
-            const items = itineraryData[activeDayIndex].items;
+            const day = itineraryData[activeDayIndex];
+            const items = day.items;
+            const intervals = getTimelineIntervals(day);
+            const previous = intervals[index - 1];
+            const following = intervals[index + 1];
             items.splice(index, 1);
-            if (index === items.length && items.length) {
+            if (previous && following) {
+                // Removing the middle activity must not pull the following
+                // activity forward. The resulting gap is derived from the two
+                // activities that remain on the timeline.
+                items[index - 1].transitAfter = Math.max(0, following.start - previous.end);
+            } else if (!previous && following) {
+                day.startTime = gridTime(following.start);
+            } else if (index === items.length && items.length) {
                 items[items.length - 1].transitAfter = DEFAULT_LAST_TRANSIT_MINUTES;
             }
             recalculateTimes();
@@ -1801,6 +1927,11 @@
             renderDayTabs();
             renderSpotsList();
             recalculateTimes();
+            undoStack = [];
+            historyReady = true;
+            lastHistoryData = JSON.stringify(itineraryData);
+            lastHistoryDayIndex = activeDayIndex;
+            updateUndoButton();
         };
     </script>
 </body>
