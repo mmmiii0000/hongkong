@@ -722,7 +722,8 @@
 
         let selectedCategory = 'ALL';
         let activeDayIndex = 0;
-        let itineraryData = JSON.parse(JSON.stringify(DEFAULT_ITINERARY));
+        const cloneData = value => JSON.parse(JSON.stringify(value));
+        let itineraryData = cloneData(DEFAULT_ITINERARY);
         let saveBadgeTimer = null;
         let undoStack = [];
         let historyReady = false;
@@ -803,7 +804,7 @@
                             if (isUntouchedLegacyDay(day, index) ||
                                 (index === 0 && isUntouchedPreviousDayOne(day)) ||
                                 (index === 1 && isUntouchedPreviousDayTwo(day))) {
-                                return JSON.parse(JSON.stringify(DEFAULT_ITINERARY[index]));
+                                return cloneData(DEFAULT_ITINERARY[index]);
                             }
                             if (index >= 2 && isUntouchedAddedMealDay(day)) {
                                 return { dayNumber: day.dayNumber, timelineStartTime: '06:00', startTime: '09:00', items: [] };
@@ -828,7 +829,7 @@
             const initialDay = DEFAULT_ITINERARY[activeDayIndex] || {
                 dayNumber: activeDayIndex + 1, timelineStartTime: '06:00', startTime: '09:00', items: []
             };
-            itineraryData[activeDayIndex] = JSON.parse(JSON.stringify(initialDay));
+            itineraryData[activeDayIndex] = cloneData(initialDay);
             renderDayTabs();
             recalculateTimes();
         }
@@ -901,7 +902,11 @@
                 const item = activeDay.items[idx];
                 if (item.locked && isValidClockTime(item.lockedStartTime)) {
                     const lockedMinute = timeToMinutes(item.lockedStartTime);
-                    if (probeMinute > lockedMinute && historyReady && lastHistoryData && !isRestoringHistory) {
+                    // The transfer before a pinned activity is flexible. Only
+                    // the preceding activity itself crossing the pinned start
+                    // is a real conflict; an oversized old transfer can shrink.
+                    const overlapsLockedStart = idx > 0 && previousEnd > lockedMinute;
+                    if (overlapsLockedStart && historyReady && lastHistoryData && !isRestoringHistory) {
                         const lockedName = item.name;
                         isRestoringHistory = true;
                         itineraryData = JSON.parse(lastHistoryData);
@@ -920,7 +925,7 @@
                 previousEnd = probeMinute + (parseInt(item.duration, 10) || 30);
                 probeMinute = previousEnd;
                 if (idx < activeDay.items.length - 1) {
-                    probeMinute += parseInt(item.transitAfter ?? 30, 10) || 0;
+                    probeMinute += parseInt(item.transitAfter ?? DEFAULT_TRANSIT_MINUTES, 10) || 0;
                 }
             }
 
@@ -944,7 +949,7 @@
                     }
                 }
 
-                if (item.transitAfter === undefined) item.transitAfter = 30;
+                if (item.transitAfter === undefined) item.transitAfter = DEFAULT_TRANSIT_MINUTES;
                 if (item.transitNotes === undefined) item.transitNotes = '';
 
                 if (!isOvernightActive && idx < activeDay.items.length - 1) {
@@ -1019,6 +1024,10 @@
         const SCHEDULE_END = 24 * 60;
         const SCHEDULE_SLOT_MINUTES = 15;
         const SCHEDULE_SLOT_HEIGHT = 24;
+        const DEFAULT_TRANSIT_MINUTES = 30;
+        const DEFAULT_LAST_TRANSIT_MINUTES = 60;
+        const OVERNIGHT_PREVIEW_MINUTES = 60;
+        const COMPARISON_PLAN_KEYS = ['A', 'B'];
         let scheduleGesture = null;
         let suppressEventClick = false;
         let editingItemIndex = null;
@@ -1047,9 +1056,9 @@
                 const start = minute;
                 const end = item.duration === 'OVERNIGHT'
                     ? SCHEDULE_END
-                    : start + (parseInt(item.duration, 10) || 30);
+                    : start + (parseInt(item.duration, 10) || DEFAULT_TRANSIT_MINUTES);
                 if (index < day.items.length - 1) {
-                    minute = end + (parseInt(item.transitAfter ?? 30, 10) || 0);
+                    minute = end + (parseInt(item.transitAfter ?? DEFAULT_TRANSIT_MINUTES, 10) || 0);
                 }
                 return { item, start, end };
             });
@@ -1061,7 +1070,7 @@
 
         function findProposalStart(day, item, preferredStartTime = null) {
             const intervals = getTimelineIntervals(day);
-            const duration = item.duration === 'OVERNIGHT' ? 60 : Number(item.duration);
+            const duration = item.duration === 'OVERNIGHT' ? OVERNIGHT_PREVIEW_MINUTES : Number(item.duration);
             if (preferredStartTime) {
                 const target = timeToMinutes(preferredStartTime);
                 const overlappingIndex = intervals.findIndex(entry => target < entry.end || entry.item.duration === 'OVERNIGHT');
@@ -1073,7 +1082,7 @@
             }
             if (item.duration === 'OVERNIGHT') {
                 const lastRegular = [...intervals].reverse().find(entry => entry.item.duration !== 'OVERNIGHT');
-                return Math.min(SCHEDULE_END - 60, roundUpToScheduleSlot((lastRegular?.end ?? intervals[0].start) + 60));
+                return Math.min(SCHEDULE_END - OVERNIGHT_PREVIEW_MINUTES, roundUpToScheduleSlot((lastRegular?.end ?? intervals[0].start) + DEFAULT_LAST_TRANSIT_MINUTES));
             }
 
             // Use the earliest complete gap after the first activity, allowing
@@ -1111,9 +1120,16 @@
         }
 
         function proposalDurationMinutes() {
-            if (!pendingItemProposal) return 60;
+            if (!pendingItemProposal) return OVERNIGHT_PREVIEW_MINUTES;
             return pendingItemProposal.item.duration === 'OVERNIGHT'
-                ? 60 : Number(pendingItemProposal.item.duration);
+                ? OVERNIGHT_PREVIEW_MINUTES : Number(pendingItemProposal.item.duration);
+        }
+
+        function findComparisonPlanAtX(clientX) {
+            return [...document.querySelectorAll('[data-comparison-plan]')].find(panel => {
+                const rect = panel.getBoundingClientRect();
+                return clientX >= rect.left && clientX <= rect.right;
+            })?.dataset.comparisonPlan || null;
         }
 
         function setProposalStart(minute, render = true) {
@@ -1179,13 +1195,9 @@
                 pendingItemProposal.planKey = gesture.startPlanKey;
                 activateComparisonPlan(gesture.startPlanKey);
             } else if (gesture.moved && itineraryData[activeDayIndex]?.comparison) {
-                const panels = [...document.querySelectorAll('[data-comparison-plan]')];
-                const targetPanel = panels.find(panel => {
-                    const rect = panel.getBoundingClientRect();
-                    return gesture.clientX >= rect.left && gesture.clientX <= rect.right;
-                });
-                if (targetPanel) {
-                    pendingItemProposal.planKey = targetPanel.dataset.comparisonPlan;
+                const targetPlanKey = findComparisonPlanAtX(gesture.clientX);
+                if (targetPlanKey) {
+                    pendingItemProposal.planKey = targetPlanKey;
                     activateComparisonPlan(pendingItemProposal.planKey);
                     setProposalStart(pendingItemProposal.start, false);
                 }
@@ -1212,29 +1224,50 @@
             }
         }
 
+        function preserveTimesAfterRemoval(day, intervals, removedIndex) {
+            const previous = intervals[removedIndex - 1];
+            const following = intervals[removedIndex + 1];
+            if (previous && following) {
+                day.items[removedIndex - 1].transitAfter = Math.max(0, following.start - previous.end);
+            } else if (!previous && following) {
+                day.startTime = gridTime(following.start);
+            } else if (day.items.length) {
+                day.items[day.items.length - 1].transitAfter = DEFAULT_LAST_TRANSIT_MINUTES;
+            }
+        }
+
+        function insertItemAtTime(day, item, targetMinute) {
+            const intervals = getTimelineIntervals(day);
+            const duration = item.duration === 'OVERNIGHT'
+                ? OVERNIGHT_PREVIEW_MINUTES : Number(item.duration);
+            const target = Math.max(getScheduleStartMinutes(day), Math.min(
+                SCHEDULE_END - duration,
+                Math.round(targetMinute / SCHEDULE_SLOT_MINUTES) * SCHEDULE_SLOT_MINUTES
+            ));
+            let insertAt = item.duration === 'OVERNIGHT' ? day.items.length :
+                intervals.findIndex(entry => target < entry.end || entry.item.duration === 'OVERNIGHT');
+            if (insertAt < 0) insertAt = day.items.length;
+            const previous = intervals[insertAt - 1];
+            const following = intervals[insertAt];
+            const actual = previous ? Math.max(target, previous.end) : target;
+            if (previous) day.items[insertAt - 1].transitAfter = Math.max(0, actual - previous.end);
+            else day.startTime = gridTime(actual);
+            if (following && item.duration !== 'OVERNIGHT') {
+                item.transitAfter = Math.max(DEFAULT_TRANSIT_MINUTES, following.start - actual - duration);
+            } else if (!following) {
+                item.transitAfter = DEFAULT_LAST_TRANSIT_MINUTES;
+            }
+            day.items.splice(insertAt, 0, item);
+        }
+
         function commitPendingItem() {
             const proposal = pendingItemProposal;
             if (!proposal || proposal.dayIndex !== activeDayIndex) return;
             activateComparisonPlan(proposal.planKey || 'A');
             const day = itineraryData[activeDayIndex];
-            const intervals = getTimelineIntervals(day);
             const item = { ...proposal.item };
-            const duration = item.duration === 'OVERNIGHT' ? 60 : Number(item.duration);
-            let insertAt = item.duration === 'OVERNIGHT' ? day.items.length :
-                intervals.findIndex(entry => proposal.start < entry.end || entry.item.duration === 'OVERNIGHT');
-            if (insertAt < 0) insertAt = day.items.length;
-            const previous = intervals[insertAt - 1];
-            const following = intervals[insertAt];
-            const actual = previous ? Math.max(proposal.start, previous.end) : proposal.start;
-            if (previous) day.items[insertAt - 1].transitAfter = Math.max(0, actual - previous.end);
-            else day.startTime = gridTime(actual);
-            if (following && item.duration !== 'OVERNIGHT') {
-                item.transitAfter = Math.max(30, following.start - actual - duration);
-            } else if (!following) {
-                item.transitAfter = DEFAULT_LAST_TRANSIT_MINUTES;
-            }
             pendingItemProposal = null;
-            day.items.splice(insertAt, 0, item);
+            insertItemAtTime(day, item, proposal.start);
             recalculateTimes();
         }
 
@@ -1265,8 +1298,8 @@
             pendingItemProposal = null;
             const snapshot = {
                 startTime: day.startTime,
-                items: JSON.parse(JSON.stringify(day.items)),
-                transitGaps: JSON.parse(JSON.stringify(day.transitGaps || {}))
+                items: cloneData(day.items),
+                transitGaps: cloneData(day.transitGaps || {})
             };
             day.comparison = {
                 active: 'A',
@@ -1342,7 +1375,7 @@
                     if (bandHeight > 0) {
                         blocks += `<div class="schedule-transit" style="top:${gridY(bandStart)}px;height:${bandHeight}px" role="button" tabindex="0" title="移動時間を編集"
                             onclick="${planActivation}openEventEditor(${index})" onkeydown="${planActivation}if(event.key === 'Enter' || event.key === ' ') {event.preventDefault();openEventEditor(${index})}">
-                            ${bandHeight >= 18 ? `<span class="schedule-transit-label"><i class="fa-solid fa-person-walking mr-1"></i>移動 ${Number(item.transitAfter ?? 30)}分${item.transitNotes ? ` · ${escapeHtml(item.transitNotes)}` : ''}</span>` : ''}
+                            ${bandHeight >= 18 ? `<span class="schedule-transit-label"><i class="fa-solid fa-person-walking mr-1"></i>移動 ${Number(item.transitAfter ?? DEFAULT_TRANSIT_MINUTES)}分${item.transitNotes ? ` · ${escapeHtml(item.transitNotes)}` : ''}</span>` : ''}
                         </div>`;
                     }
                 }
@@ -1401,14 +1434,14 @@
             const sharedOverflowNotice = document.getElementById('scheduleOverflowNotice');
             if (sharedOverflowNotice) sharedOverflowNotice.hidden = true;
             region.innerHTML = `<div class="comparison-grid">
-                ${['A', 'B'].map(key => `<section class="comparison-plan" data-comparison-plan="${key}">
+                ${COMPARISON_PLAN_KEYS.map(key => `<section class="comparison-plan" data-comparison-plan="${key}">
                     <div class="comparison-plan-header"><span class="comparison-plan-title">Plan ${key}</span><button type="button" class="comparison-plan-close" title="Plan ${key}を閉じる" aria-label="Plan ${key}を閉じる" onclick="closeComparisonPlan('${key}')"><i class="fa-solid fa-xmark"></i></button></div>
                     <div class="schedule-viewport"><div id="timelineContainer${key}" class="schedule-canvas ${key === 'B' ? 'no-time-axis' : ''}"></div></div>
                     <p id="scheduleOverflowNotice${key}" hidden class="mt-2 text-[10px] text-warm-textMuted"></p>
                 </section>`).join('')}
             </div>`;
             if (compareButton) compareButton.hidden = true;
-            ['A', 'B'].forEach(key => {
+            COMPARISON_PLAN_KEYS.forEach(key => {
                 activateComparisonPlan(key);
                 renderTimelineCore(`timelineContainer${key}`, key, false);
             });
@@ -1466,7 +1499,7 @@
                     </label>
                     ${hasNext ? `<div class="rounded-xl bg-cream-100/60 border border-cream-200 p-3 space-y-2">
                         <div class="font-semibold text-warm-textMuted"><i class="fa-solid fa-person-walking mr-1"></i>次の予定までの移動</div>
-                        <label class="flex items-center gap-2">時間 <input type="number" min="0" max="1439" step="1" value="${Number(item.transitAfter ?? 30)}" ${lockedAttr} onchange="updateTransitTime(${index},this.value)" class="w-20 rounded-lg border border-cream-300 p-1.5 font-normal text-center disabled:bg-cream-100">分</label>
+                        <label class="flex items-center gap-2">時間 <input type="number" min="0" max="1439" step="1" value="${Number(item.transitAfter ?? DEFAULT_TRANSIT_MINUTES)}" ${lockedAttr} onchange="updateTransitTime(${index},this.value)" class="w-20 rounded-lg border border-cream-300 p-1.5 font-normal text-center disabled:bg-cream-100">分</label>
                         <input type="text" value="${escapeHtml(item.transitNotes || '')}" ${lockedAttr} onchange="updateTransitNotes(${index},this.value);renderTimeline()" placeholder="移動メモ" class="w-full rounded-lg border border-cream-300 p-2 font-normal disabled:bg-cream-100">
                     </div>` : ''}
                     <button type="button" ${lockedAttr} onclick="removeTimelineItem(${index})" class="w-full py-2 rounded-lg border border-rose-200 text-rose-700 hover:bg-rose-50 disabled:opacity-35 disabled:cursor-not-allowed"><i class="fa-solid fa-trash-can mr-1"></i>この予定を削除</button>
@@ -1609,10 +1642,7 @@
             suppressEventClick = true;
             setTimeout(() => { suppressEventClick = false; }, 100);
             const targetPlanKey = gesture.mode === 'move' && itineraryData[activeDayIndex]?.comparison
-                ? [...document.querySelectorAll('[data-comparison-plan]')].find(panel => {
-                    const rect = panel.getBoundingClientRect();
-                    return gesture.clientX >= rect.left && gesture.clientX <= rect.right;
-                })?.dataset.comparisonPlan
+                ? findComparisonPlanAtX(gesture.clientX)
                 : null;
             if (gesture.mode === 'move' && targetPlanKey && targetPlanKey !== gesture.sourcePlanKey) {
                 moveTimelineItemBetweenPlans(gesture.index, gesture.sourcePlanKey, targetPlanKey, gesture.value);
@@ -1641,41 +1671,14 @@
             if (isItemLocked(index)) return;
             const sourceIntervals = getTimelineIntervals(day);
             const movedItem = day.items[index];
-            const previous = sourceIntervals[index - 1];
-            const following = sourceIntervals[index + 1];
             if (!movedItem) return;
 
             day.items.splice(index, 1);
-            if (previous && following) {
-                day.items[index - 1].transitAfter = Math.max(0, following.start - previous.end);
-            } else if (!previous && following) {
-                day.startTime = gridTime(following.start);
-            } else if (day.items.length) {
-                day.items[day.items.length - 1].transitAfter = DEFAULT_LAST_TRANSIT_MINUTES;
-            }
+            preserveTimesAfterRemoval(day, sourceIntervals, index);
             saveActiveComparisonPlan(day);
 
             activateComparisonPlan(targetPlanKey);
-            const targetIntervals = getTimelineIntervals(day);
-            const duration = movedItem.duration === 'OVERNIGHT' ? 60 : Number(movedItem.duration);
-            const target = Math.max(getScheduleStartMinutes(), Math.min(
-                SCHEDULE_END - duration,
-                Math.round(targetMinute / SCHEDULE_SLOT_MINUTES) * SCHEDULE_SLOT_MINUTES
-            ));
-            let insertAt = movedItem.duration === 'OVERNIGHT' ? day.items.length :
-                targetIntervals.findIndex(entry => target < entry.end || entry.item.duration === 'OVERNIGHT');
-            if (insertAt < 0) insertAt = day.items.length;
-            const targetPrevious = targetIntervals[insertAt - 1];
-            const targetFollowing = targetIntervals[insertAt];
-            const actual = targetPrevious ? Math.max(target, targetPrevious.end) : target;
-            if (targetPrevious) day.items[insertAt - 1].transitAfter = Math.max(0, actual - targetPrevious.end);
-            else day.startTime = gridTime(actual);
-            if (targetFollowing && movedItem.duration !== 'OVERNIGHT') {
-                movedItem.transitAfter = Math.max(30, targetFollowing.start - actual - duration);
-            } else if (!targetFollowing) {
-                movedItem.transitAfter = DEFAULT_LAST_TRANSIT_MINUTES;
-            }
-            day.items.splice(insertAt, 0, movedItem);
+            insertItemAtTime(day, movedItem, targetMinute);
             recalculateTimes();
         }
 
@@ -1701,7 +1704,7 @@
             const rememberedGap = (from, to) => {
                 const key = JSON.stringify([from.item.id, to.item.id]);
                 return Object.prototype.hasOwnProperty.call(day.transitGaps || {}, key)
-                    ? Number(day.transitGaps[key]) : 30;
+                    ? Number(day.transitGaps[key]) : DEFAULT_TRANSIT_MINUTES;
             };
             const previous = remaining[insertAt - 1];
             const following = remaining[insertAt];
@@ -1737,7 +1740,7 @@
                 // the moved activity to the next existing start; only use the
                 // standard transfer when the new activity overlaps it.
                 const availableGap = following.start - actual - duration;
-                moved.item.transitAfter = availableGap >= 0 ? availableGap : 30;
+                moved.item.transitAfter = availableGap >= 0 ? availableGap : DEFAULT_TRANSIT_MINUTES;
             } else if (!following) {
                 moved.item.transitAfter = DEFAULT_LAST_TRANSIT_MINUTES;
             }
@@ -1776,7 +1779,7 @@
                 const newEnd = current.start + duration;
                 copied[index].transitAfter = newEnd <= next.start
                     ? next.start - newEnd
-                    : Number(current.item.transitAfter ?? 30);
+                    : Number(current.item.transitAfter ?? DEFAULT_TRANSIT_MINUTES);
             }
             const proposed = getTimelineIntervals({ startTime: day.startTime, items: copied });
             if (proposed.length && proposed[proposed.length - 1].end > SCHEDULE_END &&
@@ -1892,8 +1895,6 @@
         function filterSpots() {
             renderSpotsList();
         }
-
-        const DEFAULT_LAST_TRANSIT_MINUTES = 60;
 
         function addItemToActiveDay(newItem) {
             stageItemForTimeline(newItem);
@@ -2081,19 +2082,8 @@
             const day = itineraryData[activeDayIndex];
             const items = day.items;
             const intervals = getTimelineIntervals(day);
-            const previous = intervals[index - 1];
-            const following = intervals[index + 1];
             items.splice(index, 1);
-            if (previous && following) {
-                // Removing the middle activity must not pull the following
-                // activity forward. The resulting gap is derived from the two
-                // activities that remain on the timeline.
-                items[index - 1].transitAfter = Math.max(0, following.start - previous.end);
-            } else if (!previous && following) {
-                day.startTime = gridTime(following.start);
-            } else if (index === items.length && items.length) {
-                items[items.length - 1].transitAfter = DEFAULT_LAST_TRANSIT_MINUTES;
-            }
+            preserveTimesAfterRemoval(day, intervals, index);
             recalculateTimes();
         }
 
@@ -2188,7 +2178,7 @@
                             txt += ` 📝 メモ: ${item.notes}\n`;
                         }
                         if (idx < day.items.length - 1) {
-                            const transit = item.transitAfter !== undefined ? item.transitAfter : 30;
+                            const transit = item.transitAfter !== undefined ? item.transitAfter : DEFAULT_TRANSIT_MINUTES;
                             const transitNote = item.transitNotes ? ` (${item.transitNotes})` : '';
                             txt += `   ↓ [移動 ${transit}分${transitNote}]\n`;
                         }
@@ -2229,7 +2219,7 @@
                     day.items.forEach((item, idx) => {
                         const durationLabel = item.duration === 'OVERNIGHT' ? '翌朝まで' : formatDurationLabel(item.duration);
                         const transit = idx < day.items.length - 1
-                            ? `<div style="font-size: 8px; color: #9B6B33; margin-top: 5px;">移動 ${Number(item.transitAfter ?? 30)}分${item.transitNotes ? ` · ${escapeHtml(item.transitNotes)}` : ''}</div>`
+                            ? `<div style="font-size: 8px; color: #9B6B33; margin-top: 5px;">移動 ${Number(item.transitAfter ?? DEFAULT_TRANSIT_MINUTES)}分${item.transitNotes ? ` · ${escapeHtml(item.transitNotes)}` : ''}</div>`
                             : '';
                         pdfContent += `
                             <div class="pdf-overview-event">
