@@ -344,13 +344,8 @@
                 </div>
             </div>
 
-            <!-- Auto-save Status & Export Buttons -->
+            <!-- History & Export Buttons -->
             <div class="flex items-center space-x-1.5 sm:space-x-2">
-                <div id="saveIndicator" class="hidden sm:flex items-center gap-1.5 px-2.5 py-1 bg-emerald-50 border border-emerald-200 text-emerald-800 rounded-lg text-[11px] font-medium transition-opacity duration-300 mr-1">
-                    <i class="fa-solid fa-floppy-disk text-emerald-600"></i>
-                    <span>自動保存済</span>
-                </div>
-
                 <button id="undoButton" onclick="undoLastChange()" disabled title="元に戻す" aria-label="元に戻す" class="px-2.5 py-1.5 sm:px-3 sm:py-2 text-xs font-semibold bg-white text-warm-textDark border border-cream-300 rounded-xl transition flex items-center gap-1.5 shadow-sm active:scale-95 disabled:opacity-35 disabled:cursor-not-allowed disabled:active:scale-100">
                     <i class="fa-solid fa-arrow-rotate-left"></i>
                     <span class="hidden sm:inline">元に戻す</span>
@@ -724,7 +719,6 @@
         let activeDayIndex = 0;
         const cloneData = value => JSON.parse(JSON.stringify(value));
         let itineraryData = cloneData(DEFAULT_ITINERARY);
-        let saveBadgeTimer = null;
         let undoStack = [];
         let historyReady = false;
         let isRestoringHistory = false;
@@ -773,15 +767,6 @@
                     lastSavedAt: new Date().toISOString()
                 };
                 localStorage.setItem(STORAGE_KEY, JSON.stringify(payload));
-                
-                const badge = document.getElementById('saveIndicator');
-                if (badge) {
-                    badge.classList.remove('hidden');
-                    clearTimeout(saveBadgeTimer);
-                    saveBadgeTimer = setTimeout(() => {
-                        badge.classList.add('hidden');
-                    }, 1200);
-                }
             } catch (err) {
                 console.warn('LocalStorage save failed:', err);
             }
