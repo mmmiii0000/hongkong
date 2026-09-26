@@ -1800,6 +1800,25 @@
                 movedInterval.end <= oldFollowing.start) {
                 moved.transitAfter = oldFollowing.start - movedInterval.end;
             }
+            // A drop in empty time is an insertion at that clock time, even
+            // when it changes the order. Only drops onto an existing activity
+            // use the positional-gap reorder behavior above.
+            const droppedInGap = !remainingIntervals.some(entry =>
+                target >= entry.start && target < entry.end
+            );
+            if (reordered && droppedInGap && moved.duration !== 'OVERNIGHT') {
+                let previousEnd = null;
+                let previousItem = null;
+                remainingItems.forEach(item => {
+                    const desiredStart = item === moved ? target : originalById.get(item.id).start;
+                    const start = previousEnd === null ? desiredStart : Math.max(desiredStart, previousEnd);
+                    if (previousItem) previousItem.transitAfter = start - previousEnd;
+                    else proposed.startTime = gridTime(start);
+                    previousEnd = item.duration === 'OVERNIGHT'
+                        ? SCHEDULE_END : start + Number(item.duration);
+                    previousItem = item;
+                });
+            }
             const fit = fitTimelineConstraints(proposed);
             if (!fit.ok) {
                 const message = fit.reason === 'locked'
